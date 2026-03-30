@@ -1,4 +1,6 @@
-import { Client, Collection, REST, RESTPostAPIApplicationCommandsJSONBody, Routes } from "discord.js";
+import {
+	Client, Collection, REST, RESTPostAPIApplicationCommandsJSONBody, Routes
+} from "discord.js";
 import fs from "fs";
 import cron from "node-cron";
 import path from "path";
@@ -271,34 +273,42 @@ export class Loader {
 
 		const rest = new REST({ version: "10" }).setToken(token);
 
-		// Only initialize as empty, then populate if NOT cleaning up
-		const commandData: RESTPostAPIApplicationCommandsJSONBody[] = [];
+		const globalData: RESTPostAPIApplicationCommandsJSONBody[] = [];
+		const guildData: RESTPostAPIApplicationCommandsJSONBody[] = [];
 
 		if (!forceCleanup) {
 			const uniqueModules = new Set(commandsCollection.values());
 			for (const cmd of uniqueModules) {
-				if (cmd.data && typeof cmd.data.toJSON === "function") {
-					commandData.push(cmd.data.toJSON() as RESTPostAPIApplicationCommandsJSONBody);
-				}
-				if (cmd.contextData && typeof cmd.contextData.toJSON === "function") {
-					commandData.push(cmd.contextData.toJSON() as RESTPostAPIApplicationCommandsJSONBody);
+				const data = cmd.data?.toJSON?.() as RESTPostAPIApplicationCommandsJSONBody;
+				if (!data) continue;
+
+				// If it's testGuildOnly, it ALWAYS goes to the guild bucket
+				if (cmd.testGuildOnly) {
+					guildData.push(data);
+				} else {
+					// Otherwise, follow the standard environment logic
+					if (mode === "DEV") {
+						guildData.push(data);
+					} else {
+						globalData.push(data);
+					}
 				}
 			}
 		}
 
 		try {
-			if (mode === "DEV" && DISCORD_TEST_GUILD_ID) {
-				await rest.put(Routes.applicationGuildCommands(clientId, DISCORD_TEST_GUILD_ID), { body: commandData });
-				Logger.info(
-					"DISCORD_LOADER",
-					forceCleanup ? "🧹 Cleaned all test server commands." : `✅ Synced ${commandData.length} commands to test server.`,
-				);
-			} else {
-				await rest.put(Routes.applicationCommands(clientId), { body: commandData });
-				Logger.info("DISCORD_LOADER", forceCleanup ? "🧹 Cleaned all global commands." : `✅ Synced ${commandData.length} global commands.`);
+			// Sync Guild Commands (Hard-locked test commands + DEV mode commands)
+			if (DISCORD_TEST_GUILD_ID) {
+				await rest.put(Routes.applicationGuildCommands(clientId, DISCORD_TEST_GUILD_ID), { body: guildData });
+				Logger.info("DISCORD_LOADER", `✅ Synced ${guildData.length} commands to test guild.`);
 			}
+
+			// Sync Global Commands (Standard commands in PROD mode)
+			// If forceCleanup is true, globalData is [], wiping them correctly.
+			await rest.put(Routes.applicationCommands(clientId), { body: globalData });
+			Logger.info("DISCORD_LOADER", `✅ Synced ${globalData.length} global commands.`);
 		} catch (error) {
-			Logger.error("DISCORD_LOADER", "Failed command sync/cleanup", error);
+			Logger.error("DISCORD_LOADER", "Failed command sync", error);
 		}
 	}
 }

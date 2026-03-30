@@ -8,6 +8,7 @@ import { DiscordCommand } from "../../../types/index.js";
 const evalCommand: DiscordCommand = {
 	data: new SlashCommandBuilder().setName("eval").setDescription("👨‍💻 Execute raw JavaScript code (Bot Owner Only)"),
 	devOnly: true,
+	testGuildOnly: true,
 	async execute(interaction: ChatInputCommandInteraction | ContextMenuCommandInteraction) {
 		if (!interaction.isChatInputCommand()) return;
 
