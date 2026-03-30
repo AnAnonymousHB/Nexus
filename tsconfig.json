@@ -1,0 +1,15 @@
+{
+	"compilerOptions": {
+		"target": "ESNext",
+		"module": "NodeNext", // Crucial for ESM support in Node
+		"moduleResolution": "NodeNext",
+		"outDir": "./dist", // This creates the dist folder
+		"rootDir": "./src", // Assumes all your .ts files are in /src
+		"strict": true,
+		"esModuleInterop": true,
+		"skipLibCheck": true,
+		"forceConsistentCasingInFileNames": true
+	},
+	"include": ["src/**/*"],
+	"exclude": ["node_modules"]
+}
