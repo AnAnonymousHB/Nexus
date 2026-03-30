@@ -5,19 +5,11 @@ import {
 import { inspect } from "util";
 
 import { DiscordModal } from "../../../types/index.js";
-import { DISCORD_BOT_DEVS, evalCache } from "../../../utils/index.js";
+import { evalCache } from "../../../utils/index.js";
 
 const evalModal: DiscordModal = {
 	customId: "eval_modal",
 	async execute(interaction: ModalSubmitInteraction) {
-		if (!DISCORD_BOT_DEVS.includes(interaction.user.id)) {
-			await interaction.reply({
-				content: "❌ Unauthorized.",
-				flags: [MessageFlags.Ephemeral],
-			});
-			return;
-		}
-
 		const code = interaction.fields.getTextInputValue("eval_code");
 
 		// Save to cache so the Re-run button can find it

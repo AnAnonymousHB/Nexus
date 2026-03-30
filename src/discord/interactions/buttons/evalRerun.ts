@@ -1,22 +1,13 @@
 import {
-	ActionRowBuilder, ButtonInteraction, MessageFlags, ModalBuilder, TextInputBuilder,
-	TextInputStyle
+	ActionRowBuilder, ButtonInteraction, ModalBuilder, TextInputBuilder, TextInputStyle
 } from "discord.js";
 
 import { DiscordButton } from "../../../types/index.js";
-import { DISCORD_BOT_DEVS, evalCache } from "../../../utils/index.js";
+import { evalCache } from "../../../utils/index.js";
 
 const evalRerunButton: DiscordButton = {
 	customId: "eval_rerun",
 	async execute(interaction: ButtonInteraction) {
-		if (!DISCORD_BOT_DEVS.includes(interaction.user.id)) {
-			await interaction.reply({
-				content: "❌ Unauthorized.",
-				flags: [MessageFlags.Ephemeral],
-			});
-			return;
-		}
-
 		// Retrieve the code from our in-memory cache
 		const previousCode = evalCache.get(interaction.user.id) || "";
 
