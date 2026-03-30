@@ -1,6 +1,11 @@
 import {
-	ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, InteractionEditReplyOptions,
-	MessageFlags, ModalSubmitInteraction
+	ActionRowBuilder,
+	AttachmentBuilder,
+	ButtonBuilder,
+	ButtonStyle,
+	InteractionEditReplyOptions,
+	MessageFlags,
+	ModalSubmitInteraction,
 } from "discord.js";
 import { inspect } from "util";
 
@@ -9,6 +14,7 @@ import { evalCache } from "../../../utils/index.js";
 
 const evalModal: DiscordModal = {
 	customId: "eval_modal",
+	devOnly: true,
 	async execute(interaction: ModalSubmitInteraction) {
 		const code = interaction.fields.getTextInputValue("eval_code");
 

@@ -7,6 +7,7 @@ import { evalCache } from "../../../utils/index.js";
 
 const evalRerunButton: DiscordButton = {
 	customId: "eval_rerun",
+	devOnly: true,
 	async execute(interaction: ButtonInteraction) {
 		// Retrieve the code from our in-memory cache
 		const previousCode = evalCache.get(interaction.user.id) || "";
