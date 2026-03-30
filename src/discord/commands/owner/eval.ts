@@ -4,20 +4,12 @@ import {
 } from "discord.js";
 
 import { DiscordCommand } from "../../../types/index.js";
-import { DISCORD_BOT_DEVS } from "../../../utils/index.js";
 
 const evalCommand: DiscordCommand = {
 	data: new SlashCommandBuilder().setName("eval").setDescription("👨‍💻 Execute raw JavaScript code (Bot Owner Only)"),
+	devOnly: true,
 	async execute(interaction: ChatInputCommandInteraction | ContextMenuCommandInteraction) {
 		if (!interaction.isChatInputCommand()) return;
-
-		if (!DISCORD_BOT_DEVS.includes(interaction.user.id)) {
-			await interaction.reply({
-				content: "❌ You do not have permission to use this command.",
-				flags: [MessageFlags.Ephemeral],
-			});
-			return;
-		}
 
 		const codeInput = new TextInputBuilder({
 			custom_id: "eval_code",

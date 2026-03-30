@@ -2,6 +2,7 @@ import { Client, Events, Interaction, InteractionType, MessageFlags } from "disc
 
 import { DiscordManager } from "../../managers/DiscordManager.js";
 import { Logger } from "../../managers/index.js";
+import { DISCORD_BOT_DEVS } from "../../utils/Constants.js";
 
 export default (client: Client) => {
 	client.on(Events.InteractionCreate, async (interaction: Interaction) => {
@@ -15,6 +16,36 @@ export default (client: Client) => {
 						content: "❌ This command no longer exists.",
 						flags: [MessageFlags.Ephemeral],
 					});
+				}
+
+				// Check if the bot has the required permissions defined in the command
+				if (command.botPermissions && interaction.appPermissions) {
+					const missing = interaction.appPermissions.missing(command.botPermissions);
+
+					if (missing.length > 0) {
+						return interaction.reply({
+							content: `❌ I am missing the following permissions to run this: ${missing.map((p) => `\`${p}\``).join(", ")}`,
+							flags: [MessageFlags.Ephemeral],
+						});
+					}
+				}
+
+				if (command.devOnly && !DISCORD_BOT_DEVS.includes(interaction.user.id)) {
+					return interaction.reply({
+						content: "❌ This command is restricted to the bot developer.",
+						flags: [MessageFlags.Ephemeral],
+					});
+				}
+
+				if (command.userPermissions && interaction.memberPermissions) {
+					const missing = interaction.memberPermissions.missing(command.userPermissions);
+
+					if (missing.length > 0) {
+						return interaction.reply({
+							content: `❌ You need the following permissions to use this: ${missing.map((p) => `\`${p}\``).join(", ")}`,
+							flags: [MessageFlags.Ephemeral],
+						});
+					}
 				}
 
 				await command.execute(interaction);
