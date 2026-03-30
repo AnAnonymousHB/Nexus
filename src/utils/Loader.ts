@@ -1,6 +1,4 @@
-import {
-	Client, Collection, REST, RESTPostAPIApplicationCommandsJSONBody, Routes
-} from "discord.js";
+import { Client, Collection, REST, RESTPostAPIApplicationCommandsJSONBody, Routes } from "discord.js";
 import fs from "fs";
 import cron from "node-cron";
 import path from "path";
@@ -279,15 +277,13 @@ export class Loader {
 		if (!forceCleanup) {
 			const uniqueModules = new Set(commandsCollection.values());
 			for (const cmd of uniqueModules) {
-				const data = cmd.data?.toJSON?.() as RESTPostAPIApplicationCommandsJSONBody;
-				if (!data) continue;
+				const slashData = cmd.data?.toJSON?.() as RESTPostAPIApplicationCommandsJSONBody;
+				const contextData = cmd.contextData?.toJSON?.() as RESTPostAPIApplicationCommandsJSONBody;
 
-				// If it's testGuildOnly, it ALWAYS goes to the guild bucket
-				if (cmd.testGuildOnly) {
-					guildData.push(data);
-				} else {
-					// Otherwise, follow the standard environment logic
-					if (mode === "DEV") {
+				const commandsToPush = [slashData, contextData].filter(Boolean);
+
+				for (const data of commandsToPush) {
+					if (cmd.testGuildOnly || mode === "DEV") {
 						guildData.push(data);
 					} else {
 						globalData.push(data);
