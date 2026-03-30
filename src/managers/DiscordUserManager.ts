@@ -37,7 +37,7 @@ export class DiscordUserManager {
 				},
 				$inc: { "guilds.$.messageCount": 1 },
 			},
-			{ new: true },
+			{ returnDocument: "after" },
 		);
 
 		// If the user existed but hadn't been seen in THIS guild yet:
@@ -54,7 +54,7 @@ export class DiscordUserManager {
 						},
 					},
 				},
-				{ new: true },
+				{ returnDocument: "after" },
 			);
 			if (newUser) this.cache.set(userId, newUser);
 			return newUser;
