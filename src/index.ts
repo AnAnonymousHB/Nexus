@@ -2,12 +2,15 @@ import "dotenv/config";
 
 import mongoose from "mongoose";
 
-import { DiscordManager, Logger } from "./managers/index.js";
+import { CountryManager, DiscordManager, Logger } from "./managers/index.js";
 
 (async () => {
 	try {
 		await mongoose.connect(process.env.MONGO_URI!);
 		Logger.success("SYSTEM", "📦 Successfully connected to MongoDB");
+
+		Logger.info("SYSTEM", "--- 🚀 Initializing Managers ---");
+		await Promise.all([CountryManager.init()]);
 
 		await DiscordManager.init();
 	} catch (err) {
