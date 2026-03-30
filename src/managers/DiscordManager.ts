@@ -60,6 +60,8 @@ export class DiscordManager {
 			await Loader.loadDiscordInteractions(path.join(interactDir, "modals"), this.modals, (item: any) => item.customId);
 			await Loader.loadDiscordInteractions(path.join(interactDir, "menus"), this.menus, (item: any) => item.customId);
 
+			await Loader.syncApplicationCommands(this.commands);
+
 			// Connect to Discord
 			await this.client.login(process.env.MODE === "DEV" ? process.env.DISCORD_DEV_TOKEN : process.env.DISCORD_PROD_TOKEN);
 

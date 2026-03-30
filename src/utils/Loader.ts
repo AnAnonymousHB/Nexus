@@ -1,4 +1,4 @@
-import { Client, Collection } from "discord.js";
+import { Client, Collection, REST, RESTPostAPIApplicationCommandsJSONBody, Routes } from "discord.js";
 import fs from "fs";
 import cron from "node-cron";
 import path from "path";
@@ -8,8 +8,8 @@ import { ApiClient } from "@twurple/api";
 import { ChatClient } from "@twurple/chat";
 
 import { Logger } from "../managers/index.js";
-import { CronTask, TwitchCommand } from "../types/index.js";
-import { DEFAULT_TIMEZONE } from "./index.js";
+import { CronTask, DiscordCommand, TwitchCommand } from "../types/index.js";
+import { DEFAULT_TIMEZONE, DISCORD_TEST_GUILD_ID } from "./index.js";
 
 interface EventLogEntry {
 	"Event Name": string;
@@ -256,6 +256,49 @@ export class Loader {
 		if (isRoot && taskLogs.length > 0) {
 			Logger.info("TASK", `--- ⏰ ${taskLogs.length} Background Tasks Loaded ---`);
 			console.table(taskLogs.sort((a, b) => a["Task Name"].localeCompare(b["Task Name"])));
+		}
+	}
+
+	static async syncApplicationCommands(commandsCollection: Collection<string, DiscordCommand>, forceCleanup: boolean = false) {
+		const mode = process.env.MODE;
+		const token = mode === "DEV" ? process.env.DISCORD_DEV_TOKEN : process.env.DISCORD_PROD_TOKEN;
+		const clientId = mode === "DEV" ? process.env.DISCORD_DEV_CLIENT_ID : process.env.DISCORD_PROD_CLIENT_ID;
+
+		if (!token || !clientId) {
+			Logger.error("DISCORD_LOADER", "Missing Token or Client ID. Skipping slash command sync.");
+			return;
+		}
+
+		const rest = new REST({ version: "10" }).setToken(token);
+
+		// Only initialize as empty, then populate if NOT cleaning up
+		const commandData: RESTPostAPIApplicationCommandsJSONBody[] = [];
+
+		if (!forceCleanup) {
+			const uniqueModules = new Set(commandsCollection.values());
+			for (const cmd of uniqueModules) {
+				if (cmd.data && typeof cmd.data.toJSON === "function") {
+					commandData.push(cmd.data.toJSON() as RESTPostAPIApplicationCommandsJSONBody);
+				}
+				if (cmd.contextData && typeof cmd.contextData.toJSON === "function") {
+					commandData.push(cmd.contextData.toJSON() as RESTPostAPIApplicationCommandsJSONBody);
+				}
+			}
+		}
+
+		try {
+			if (mode === "DEV" && DISCORD_TEST_GUILD_ID) {
+				await rest.put(Routes.applicationGuildCommands(clientId, DISCORD_TEST_GUILD_ID), { body: commandData });
+				Logger.info(
+					"DISCORD_LOADER",
+					forceCleanup ? "🧹 Cleaned all test server commands." : `✅ Synced ${commandData.length} commands to test server.`,
+				);
+			} else {
+				await rest.put(Routes.applicationCommands(clientId), { body: commandData });
+				Logger.info("DISCORD_LOADER", forceCleanup ? "🧹 Cleaned all global commands." : `✅ Synced ${commandData.length} global commands.`);
+			}
+		} catch (error) {
+			Logger.error("DISCORD_LOADER", "Failed command sync/cleanup", error);
 		}
 	}
 }
