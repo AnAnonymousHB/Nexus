@@ -1,17 +1,33 @@
 import {
-	AnySelectMenuInteraction, AutocompleteInteraction, Awaitable, ButtonInteraction,
-	ChatInputCommandInteraction, ContextMenuCommandBuilder, ContextMenuCommandInteraction,
-	ModalSubmitInteraction, PermissionFlagsBits, SlashCommandBuilder,
-	SlashCommandOptionsOnlyBuilder, SlashCommandSubcommandsOnlyBuilder
+	AnySelectMenuInteraction,
+	AutocompleteInteraction,
+	Awaitable,
+	ButtonInteraction,
+	ChatInputCommandInteraction,
+	ContextMenuCommandBuilder,
+	ContextMenuCommandInteraction,
+	ModalSubmitInteraction,
+	PermissionFlagsBits,
+	SlashCommandBuilder,
+	SlashCommandOptionsOnlyBuilder,
+	SlashCommandSubcommandsOnlyBuilder,
 } from "discord.js";
 
-export interface DiscordButton {
+type PermissionResolvable = (typeof PermissionFlagsBits)[keyof typeof PermissionFlagsBits];
+
+export interface BaseInteraction {
+	botPermissions?: PermissionResolvable[];
+	userPermissions?: PermissionResolvable[];
+	devOnly?: boolean;
+}
+
+export interface DiscordButton extends BaseInteraction {
 	customId: string;
+
 	execute: (interaction: ButtonInteraction) => Promise<void>;
 }
 
-type PermissionResolvable = (typeof PermissionFlagsBits)[keyof typeof PermissionFlagsBits];
-export interface DiscordCommand {
+export interface DiscordCommand extends BaseInteraction {
 	/** * The Slash Command data (e.g., /avatar)
 	 */
 	data?: SlashCommandBuilder | SlashCommandOptionsOnlyBuilder | SlashCommandSubcommandsOnlyBuilder;
@@ -24,25 +40,19 @@ export interface DiscordCommand {
 	 */
 	execute: (interaction: ChatInputCommandInteraction | ContextMenuCommandInteraction) => Awaitable<void>;
 
-	/** * Array of permissions the bot MUST have in the channel to execute this specific command.
-	 */
-	botPermissions?: PermissionResolvable[];
-
-	userPermissions?: PermissionResolvable[];
-
-	devOnly?: boolean;
-
 	/** * Optional: Only needed if the command uses autocomplete
 	 */
 	autocomplete?: (interaction: AutocompleteInteraction) => Awaitable<void>;
 }
 
-export interface DiscordModal {
+export interface DiscordModal extends BaseInteraction {
 	customId: string;
+
 	execute: (interaction: ModalSubmitInteraction) => Awaitable<void>;
 }
 
-export interface DiscordSelectMenu {
+export interface DiscordSelectMenu extends BaseInteraction {
 	customId: string;
+
 	execute: (interaction: AnySelectMenuInteraction) => Awaitable<void>;
 }
