@@ -272,7 +272,10 @@ export class TwitchManager {
 
 			const durationText = formatDuration(startDate);
 			const finalGame = oldEmbed.fields.find((f) => f.name === "Game")?.value || "Unknown";
+
 			const displayName = oldEmbed.author?.name.replace(" is now LIVE!", "") || notify.twitchChannelName;
+			const authorIcon = oldEmbed.author?.iconURL;
+			const authorUrl = oldEmbed.author?.url;
 			const endTimestamp = Math.floor(Date.now() / 1000);
 
 			// Fetch final category thumb (Box Art) if missing from oldEmbed
@@ -305,6 +308,11 @@ export class TwitchManager {
 
 			// Reconstruct the embed with all three time-related fields
 			const closedEmbed = EmbedBuilder.from(oldEmbed)
+				.setAuthor({
+					name: `${displayName} is now OFFLINE`,
+					iconURL: authorIcon,
+					url: authorUrl,
+				})
 				.setColor("#2f3136")
 				.setDescription("Stream has ended. Thanks for stopping by!")
 				.setThumbnail(categoryThumbnail || null)
