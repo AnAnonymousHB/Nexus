@@ -34,7 +34,11 @@ const twitchModal: DiscordModal = {
 				}));
 			}
 
-			const botPermissions = targetChannel.permissionsFor(guild.members.me!);
+			const botMember = await guild.members.fetch(guild.client.user!.id);
+			const botPermissions = targetChannel.permissionsFor(botMember);
+
+			if (!botPermissions) return;
+
 			const requiredPermissions = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks];
 
 			// Add MentionEveryone permission if a role ping is enabled
