@@ -34,7 +34,7 @@ export class CountryManager {
 	static async init() {
 		try {
 			const resp = await fetch("https://restcountries.com/v3.1/all?fields=name");
-			const data = (await resp.json()) as Country[];
+			const data: Country[] = await resp.json();
 
 			this.countries = data.map((c) => c.name.common).sort((a: string, b: string) => a.localeCompare(b));
 
