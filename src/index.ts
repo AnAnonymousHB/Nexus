@@ -12,8 +12,7 @@ import { CountryManager, DiscordManager, Logger, TwitchManager } from "./manager
 		Logger.info("SYSTEM", "--- 🚀 Initializing Managers ---");
 		await Promise.all([CountryManager.init()]);
 
-		//TODO: Uncomment below line once Twitch Bot is set up
-		//await TwitchManager.init();
+		await TwitchManager.init();
 		await DiscordManager.init();
 	} catch (err) {
 		Logger.error("SYSTEM", "FATAL ERROR DURING STARTUP:", err);

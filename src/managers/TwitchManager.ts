@@ -1,4 +1,6 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, Client as DiscordClient, EmbedBuilder, TextChannel } from "discord.js";
+import {
+	ActionRowBuilder, ButtonBuilder, ButtonStyle, Client as DiscordClient, EmbedBuilder, TextChannel
+} from "discord.js";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -8,7 +10,7 @@ import { ChatClient, LogLevel } from "@twurple/chat";
 
 import { ITwitchNotification, TwitchAuthModel } from "../models/index.js";
 import { TwitchCommand } from "../types/index.js";
-import { formatDuration, Loader } from "../utils/index.js";
+import { formatDuration, Loader, TWITCH_BOT_ID } from "../utils/index.js";
 import { DiscordGuildManager, DiscordManager, Logger, TwitchChannelManager } from "./index.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -26,46 +28,45 @@ export class TwitchManager {
 		const channelDocs = await TwitchChannelManager.getAllChannels();
 		const initialChannels = channelDocs.map((doc) => doc.channelName);
 
-		//TODO: Need to create and set up Twitch Bot and then uncomment below lines
-		// const authData = await TwitchAuthModel.findOne({ twitchUserId: BOT_ID });
-		// if (!authData) throw new Error(`No auth data found for ID: ${BOT_ID}`);
+		const authData = await TwitchAuthModel.findOne({ twitchUserId: TWITCH_BOT_ID });
+		if (!authData) throw new Error(`No auth data found for ID: ${TWITCH_BOT_ID}`);
 
-		// const authProvider = new RefreshingAuthProvider({
-		// 	clientId: process.env.TWITCH_CLIENT_ID as string,
-		// 	clientSecret: process.env.TWITCH_CLIENT_SECRET as string,
-		// });
+		const authProvider = new RefreshingAuthProvider({
+			clientId: process.env.TWITCH_CLIENT_ID as string,
+			clientSecret: process.env.TWITCH_CLIENT_SECRET as string,
+		});
 
-		// authProvider.onRefresh(async (userId, newTokenData) => {
-		// 	await TwitchAuthModel.findOneAndUpdate(
-		// 		{ twitchUserId: userId },
-		// 		{
-		// 			accessToken: newTokenData.accessToken,
-		// 			refreshToken: newTokenData.refreshToken,
-		// 			expiresIn: newTokenData.expiresIn,
-		// 			obtainmentTimestamp: newTokenData.obtainmentTimestamp,
-		// 			scopes: newTokenData.scope,
-		// 		},
-		// 	);
-		// 	Logger.info("TWITCH", `🔄 Tokens refreshed and saved for user: ${userId}`);
-		// });
+		authProvider.onRefresh(async (userId, newTokenData) => {
+			await TwitchAuthModel.findOneAndUpdate(
+				{ twitchUserId: userId },
+				{
+					accessToken: newTokenData.accessToken,
+					refreshToken: newTokenData.refreshToken,
+					expiresIn: newTokenData.expiresIn,
+					obtainmentTimestamp: newTokenData.obtainmentTimestamp,
+					scopes: newTokenData.scope,
+				},
+			);
+			Logger.info("TWITCH", `🔄 Tokens refreshed and saved for user: ${userId}`);
+		});
 
-		// await authProvider.addUserForToken(
-		// 	{
-		// 		accessToken: authData.accessToken,
-		// 		refreshToken: authData.refreshToken,
-		// 		expiresIn: authData.expiresIn,
-		// 		obtainmentTimestamp: authData.obtainmentTimestamp,
-		// 		scope: authData.scopes,
-		// 	},
-		// 	["chat"],
-		// );
+		await authProvider.addUserForToken(
+			{
+				accessToken: authData.accessToken,
+				refreshToken: authData.refreshToken,
+				expiresIn: authData.expiresIn,
+				obtainmentTimestamp: authData.obtainmentTimestamp,
+				scope: authData.scopes,
+			},
+			["chat"],
+		);
 
-		// this.api = new ApiClient({ authProvider });
-		// this.client = new ChatClient({
-		// 	authProvider,
-		// 	channels: initialChannels,
-		// 	logger: { minLevel: LogLevel.ERROR },
-		// });
+		this.api = new ApiClient({ authProvider });
+		this.client = new ChatClient({
+			authProvider,
+			channels: initialChannels,
+			logger: { minLevel: LogLevel.ERROR },
+		});
 
 		await Loader.loadCommands(path.join(__dirname, "../twitch/commands"), this.commands);
 		await Loader.loadEvents(path.join(__dirname, "../twitch/events"), this.client, this.commands, this.api);
