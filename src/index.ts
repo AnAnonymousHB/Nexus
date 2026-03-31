@@ -2,7 +2,7 @@ import "dotenv/config";
 
 import mongoose from "mongoose";
 
-import { CountryManager, DiscordManager, Logger } from "./managers/index.js";
+import { CountryManager, DiscordManager, Logger, TwitchManager } from "./managers/index.js";
 
 (async () => {
 	try {
@@ -12,6 +12,8 @@ import { CountryManager, DiscordManager, Logger } from "./managers/index.js";
 		Logger.info("SYSTEM", "--- 🚀 Initializing Managers ---");
 		await Promise.all([CountryManager.init()]);
 
+		//TODO: Uncomment below line once Twitch Bot is set up
+		//await TwitchManager.init();
 		await DiscordManager.init();
 	} catch (err) {
 		Logger.error("SYSTEM", "FATAL ERROR DURING STARTUP:", err);
