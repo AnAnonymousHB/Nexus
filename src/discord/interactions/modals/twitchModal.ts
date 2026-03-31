@@ -1,4 +1,4 @@
-import { bold, channelMention, hyperlink, MessageFlags, ModalSubmitInteraction, roleMention } from "discord.js";
+import { bold, channelMention, hideLinkEmbed, hyperlink, MessageFlags, ModalSubmitInteraction, roleMention } from "discord.js";
 
 import { DiscordGuildManager, Logger } from "../../../managers/index.js";
 import { DiscordModal } from "../../../types/index.js";
@@ -30,7 +30,7 @@ const twitchModal: DiscordModal = {
 
 			const actionText = action === "setup" ? "added" : "updated";
 			const role = pingRole ? ` (Pinging ${roleMention(pingRole)})` : "";
-			const url = `https://www.twitch.tv/${twitchName}`;
+			const url = hideLinkEmbed(`https://www.twitch.tv/${twitchName}`);
 
 			await interaction.editReply({
 				content:
