@@ -20,7 +20,7 @@
 		"chalk": "^5.6.2",
 		"date-fns": "^4.1.0",
 		"date-fns-tz": "^3.2.0",
-		"discord.js": "^14.25.1",
+		"discord.js": "^14.26.0",
 		"dotenv": "^17.3.1",
 		"mongoose": "^9.3.3",
 		"moviedb-promise": "^4.0.8",
