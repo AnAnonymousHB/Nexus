@@ -107,7 +107,7 @@ export class DiscordGuildManager {
 					"twitchNotifications.$.pingRoleId": updates.pingRoleId,
 				},
 			},
-			{ new: true },
+			{ returnDocument: "after" },
 		);
 
 		// If no existing entry was found, use $addToSet to add it as a new one
@@ -126,7 +126,7 @@ export class DiscordGuildManager {
 						},
 					},
 				},
-				{ new: true, upsert: true },
+				{ returnDocument: "after", upsert: true },
 			);
 		}
 
@@ -148,7 +148,7 @@ export class DiscordGuildManager {
 					},
 				},
 			},
-			{ new: true },
+			{ returnDocument: "after" },
 		);
 
 		if (updated) {
