@@ -4,7 +4,7 @@ import { fileURLToPath } from "url";
 
 import { DiscordButton, DiscordCommand, DiscordModal, DiscordSelectMenu } from "../types/index.js";
 import { Loader } from "../utils/index.js";
-import { Logger } from "./index.js";
+import { DiscordGuildManager, Logger } from "./index.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -64,6 +64,8 @@ export class DiscordManager {
 
 			// Connect to Discord
 			await this.client.login(process.env.MODE === "DEV" ? process.env.DISCORD_DEV_TOKEN : process.env.DISCORD_PROD_TOKEN);
+
+			await Promise.all([DiscordGuildManager.loadAll()]);
 
 			Logger.success("DISCORD", "Discord Service Initialized");
 		} catch (err) {

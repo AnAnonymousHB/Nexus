@@ -24,4 +24,4 @@ const DiscordUserSchema = new Schema<DiscordUserDocument>({
 	],
 });
 
-export const DiscordUserModel = model("DiscordUsers", DiscordUserSchema);
+export const DiscordUserModel = model("Discord_Users", DiscordUserSchema);
