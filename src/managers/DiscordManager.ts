@@ -65,8 +65,6 @@ export class DiscordManager {
 			// Connect to Discord
 			await this.client.login(process.env.MODE === "DEV" ? process.env.DISCORD_DEV_TOKEN : process.env.DISCORD_PROD_TOKEN);
 
-			await Promise.all([DiscordGuildManager.loadAll()]);
-
 			Logger.success("DISCORD", "Discord Service Initialized");
 		} catch (err) {
 			Logger.error("DISCORD", "Failed to initialize Discord Manager", err);
