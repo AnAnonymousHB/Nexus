@@ -1,4 +1,14 @@
-import { bold, channelMention, hideLinkEmbed, hyperlink, MessageFlags, ModalSubmitInteraction, roleMention } from "discord.js";
+import {
+	bold,
+	channelMention,
+	hideLinkEmbed,
+	hyperlink,
+	MessageFlags,
+	ModalSubmitInteraction,
+	PermissionFlagsBits,
+	roleMention,
+	TextChannel,
+} from "discord.js";
 
 import { DiscordGuildManager, Logger } from "../../../managers/index.js";
 import { DiscordModal } from "../../../types/index.js";
@@ -6,14 +16,44 @@ import { DiscordModal } from "../../../types/index.js";
 const twitchModal: DiscordModal = {
 	customId: "twitch_modal",
 	async execute(interaction: ModalSubmitInteraction) {
-		const { guildId, customId, fields } = interaction;
-		if (!guildId) return;
+		const { guildId, customId, fields, guild } = interaction;
+		if (!guildId || !guild) return;
 
 		const [, action, twitchId, twitchName, channelId, roleId] = customId.split(":");
 		const liveMessage = fields.getTextInputValue("twitch_message");
 
 		await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+
 		try {
+			// --- PERMISSION CHECK START ---
+			const targetChannel = await guild.channels.fetch(channelId).catch(() => null);
+
+			if (!targetChannel || !(targetChannel instanceof TextChannel)) {
+				return void (await interaction.editReply({
+					content: `❌ I couldn't find the channel ${channelMention(channelId)}. Please try again.`,
+				}));
+			}
+
+			const botPermissions = targetChannel.permissionsFor(guild.members.me!);
+			const requiredPermissions = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks];
+
+			// Add MentionEveryone permission if a role ping is enabled
+			if (roleId !== "none") {
+				requiredPermissions.push(PermissionFlagsBits.MentionEveryone);
+			}
+
+			const missingPermissions = requiredPermissions.filter((perm) => !botPermissions.has(perm));
+
+			if (missingPermissions.length > 0) {
+				const missingNames = missingPermissions
+					.map((p) => Object.entries(PermissionFlagsBits).find(([, value]) => value === p)?.[0])
+					.filter(Boolean);
+
+				return void (await interaction.editReply({
+					content: `❌ I don't have enough permissions in ${channelMention(channelId)} to send notifications.\n**Missing:** ${missingNames.join(", ")}`,
+				}));
+			}
+
 			const pingRole = roleId === "none" ? null : roleId;
 
 			const updated = await DiscordGuildManager.updateTwitchNotification(
