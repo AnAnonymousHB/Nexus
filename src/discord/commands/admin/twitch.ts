@@ -1,8 +1,8 @@
 import {
 	ActionRowBuilder, AutocompleteInteraction, bold, ButtonBuilder, ButtonStyle, channelMention,
 	ChannelType, ChatInputCommandInteraction, ComponentType, ContextMenuCommandInteraction,
-	EmbedBuilder, hyperlink, MessageFlags, ModalBuilder, PermissionFlagsBits, SlashCommandBuilder,
-	TextInputBuilder, TextInputStyle
+	EmbedBuilder, hideLinkEmbed, hyperlink, MessageFlags, ModalBuilder, PermissionFlagsBits,
+	SlashCommandBuilder, TextInputBuilder, TextInputStyle
 } from "discord.js";
 
 import { DiscordGuildManager, Logger, TwitchManager } from "../../../managers/index.js";
@@ -14,9 +14,9 @@ type SubcommandHandler = {
 };
 
 const subcommands: Record<string, SubcommandHandler> = {
-	setup: {
-		execute: handleSetup,
-		autocomplete: handleSetupAutocomplete,
+	add: {
+		execute: handleAdd,
+		autocomplete: handleAddAutocomplete,
 	},
 	edit: {
 		execute: handleEdit,
@@ -85,7 +85,7 @@ const twitch: DiscordCommand = {
 	},
 };
 
-async function handleSetup(interaction: ChatInputCommandInteraction) {
+async function handleAdd(interaction: ChatInputCommandInteraction) {
 	const twitchUser = interaction.options.getString("username", true);
 	const channelId = interaction.options.getChannel("channel", true).id;
 	const roleId = interaction.options.getRole("role")?.id || "none";
@@ -98,7 +98,7 @@ async function handleSetup(interaction: ChatInputCommandInteraction) {
 		}));
 	}
 
-	const url = `https://www.twitch.tv/${twitchData.displayName}`;
+	const url = hideLinkEmbed(`https://www.twitch.tv/${twitchData.displayName}`);
 
 	const existing = await TwitchManager.getNotification(interaction.guildId!, twitchData.id);
 	if (existing) {
@@ -182,7 +182,7 @@ async function handleRemove(interaction: ChatInputCommandInteraction) {
 	await interaction.editReply(success ? `✅ Successfully removed ${bold(streamer)}.` : "❌ Streamer not found.");
 }
 
-async function handleSetupAutocomplete(interaction: AutocompleteInteraction) {
+async function handleAddAutocomplete(interaction: AutocompleteInteraction) {
 	const focusedValue = interaction.options.getFocused();
 	if (!focusedValue) return interaction.respond([]);
 
