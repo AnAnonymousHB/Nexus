@@ -2,7 +2,7 @@ import "dotenv/config";
 
 import mongoose from "mongoose";
 
-import { CountryManager, DiscordManager, Logger, TwitchManager } from "./managers/index.js";
+import { CountryManager, DiscordManager, Logger, TwitchCustomCommandManager, TwitchManager } from "./managers/index.js";
 
 (async () => {
 	try {
@@ -10,7 +10,7 @@ import { CountryManager, DiscordManager, Logger, TwitchManager } from "./manager
 		Logger.success("SYSTEM", "📦 Successfully connected to MongoDB");
 
 		Logger.info("SYSTEM", "--- 🚀 Initializing Managers ---");
-		await Promise.all([CountryManager.init()]);
+		await Promise.all([CountryManager.init(), TwitchCustomCommandManager.loadAll()]);
 
 		await TwitchManager.init();
 		await DiscordManager.init();
