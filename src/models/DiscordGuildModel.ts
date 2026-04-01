@@ -8,6 +8,7 @@ export interface ITwitchNotification {
 	pingRoleId?: string | null;
 	isLive: boolean;
 	lastMessageId?: string | null;
+	autoPublish?: boolean; // Crosspost message
 }
 
 export interface IGuild extends Document {
@@ -18,7 +19,6 @@ export interface IGuild extends Document {
 	roles: {
 		admin: string[];
 		mod: string[];
-		muted: string | null;
 	};
 	twitchNotifications: ITwitchNotification[];
 	disabledEvents: string[];
@@ -32,7 +32,6 @@ const GuildSchema = new Schema<IGuild>({
 	roles: {
 		admin: { type: [String], default: [] },
 		mod: { type: [String], default: [] },
-		muted: { type: String, default: null },
 	},
 	// We use an array so one Discord server can follow multiple Twitch channels
 	twitchNotifications: {
@@ -45,6 +44,7 @@ const GuildSchema = new Schema<IGuild>({
 				pingRoleId: { type: String, default: null },
 				isLive: { type: Boolean, default: false },
 				lastMessageId: { type: String, default: null },
+				autoPublish: { type: Boolean, default: true },
 			},
 		],
 		default: [],
