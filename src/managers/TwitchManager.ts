@@ -1,5 +1,12 @@
 import {
-	ActionRowBuilder, ButtonBuilder, ButtonStyle, Client as DiscordClient, EmbedBuilder, TextChannel
+	ActionRowBuilder,
+	ButtonBuilder,
+	ButtonStyle,
+	ChannelType,
+	Client as DiscordClient,
+	EmbedBuilder,
+	PermissionFlagsBits,
+	TextChannel,
 } from "discord.js";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -159,7 +166,7 @@ export class TwitchManager {
 	private static async sendDiscordAlert(discordClient: DiscordClient, notify: ITwitchNotification, stream: HelixStream, twitchUser?: HelixUser) {
 		try {
 			const channel = await discordClient.channels.fetch(notify.discordChannelId).catch(() => null);
-			if (!(channel instanceof TextChannel)) return null;
+			if (!channel || !channel.isTextBased() || channel.isDMBased()) return null;
 
 			// Fetch Game Box Art
 			let categoryThumbnail = "";
@@ -193,12 +200,21 @@ export class TwitchManager {
 				new ButtonBuilder().setLabel("Watch Stream").setStyle(ButtonStyle.Link).setURL(url),
 			);
 
-			return await channel.send({
+			const message = await channel.send({
 				content: fullMessageContent,
 				embeds: [embed],
 				components: [row],
 				allowedMentions: { parse: ["roles"] },
 			});
+
+			if (channel.type === ChannelType.GuildAnnouncement) {
+				const permissions = channel.permissionsFor(discordClient.user!);
+				if (permissions?.has(PermissionFlagsBits.ManageMessages)) {
+					await message.crosspost().catch((err) => Logger.error("DISCORD_TWITCH_ALERT", `Failed to crosspost in ${channel.name}`, err));
+				}
+			}
+
+			return message;
 		} catch (error) {
 			Logger.error("DISCORD_TWITCH_ALERT", `Failed alert for ${notify.twitchChannelName}`, error);
 			return null;
