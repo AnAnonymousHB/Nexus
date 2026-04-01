@@ -1,4 +1,6 @@
-import { Client, Collection, REST, RESTPostAPIApplicationCommandsJSONBody, Routes } from "discord.js";
+import {
+	Client, Collection, REST, RESTPostAPIApplicationCommandsJSONBody, Routes
+} from "discord.js";
 import fs from "fs";
 import cron from "node-cron";
 import path from "path";
@@ -207,7 +209,7 @@ export class Loader {
 
 				if (typeof initEvent === "function") {
 					initEvent(chatClient, commands, apiClient);
-					eventLogs.push({ "Event Name": path.parse(filePath).name, Status: "📡 Active" });
+					eventLogs.push({ "Event Name": `Twitch: ${path.parse(filePath).name}`, Status: "📡 Active" });
 				}
 			} catch (err) {
 				Logger.error("TWITCH_LOADER", `Failed to load Twitch event: ${path.basename(filePath)}`, err);

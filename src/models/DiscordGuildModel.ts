@@ -21,6 +21,7 @@ export interface IGuild extends Document {
 		muted: string | null;
 	};
 	twitchNotifications: ITwitchNotification[];
+	disabledEvents: string[];
 }
 
 const GuildSchema = new Schema<IGuild>({
@@ -46,6 +47,10 @@ const GuildSchema = new Schema<IGuild>({
 				lastMessageId: { type: String, default: null },
 			},
 		],
+		default: [],
+	},
+	disabledEvents: {
+		type: [String],
 		default: [],
 	},
 });

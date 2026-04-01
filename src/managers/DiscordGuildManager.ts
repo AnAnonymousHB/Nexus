@@ -28,7 +28,7 @@ export class DiscordGuildManager {
 	 * Update specific settings and refresh the cache
 	 */
 	static async updateSettings(guildId: string, updates: Partial<IGuild>): Promise<IGuild | null> {
-		const updated = await GuildModel.findOneAndUpdate({ guildId }, { $set: updates }, { new: true, upsert: true });
+		const updated = await GuildModel.findOneAndUpdate({ guildId }, { $set: updates }, { returnDocument: "after", upsert: true });
 
 		if (updated) {
 			this._cache.set(guildId, updated);
@@ -81,7 +81,7 @@ export class DiscordGuildManager {
 		const updated = await GuildModel.findOneAndUpdate(
 			{ guildId },
 			{ $addToSet: { twitchNotifications: notification } },
-			{ new: true, upsert: true },
+			{ returnDocument: "after", upsert: true },
 		);
 
 		if (updated) {
@@ -168,5 +168,12 @@ export class DiscordGuildManager {
 			this._cache.set(guild.guildId, guild);
 		}
 		Logger.info("DISCORD_GUILD_MGR", `Cache primed with ${guilds.length} twitch-enabled guilds.`);
+	}
+
+	static async isEventEnabled(guildId: string, eventName: string): Promise<boolean> {
+		const guild = await this.getSettings(guildId);
+		if (!guild) return false;
+
+		return !guild.disabledEvents?.includes(eventName);
 	}
 }
