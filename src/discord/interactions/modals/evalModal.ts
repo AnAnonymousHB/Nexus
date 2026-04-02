@@ -26,6 +26,8 @@ const evalModal: DiscordModal = {
 		try {
 			// Shortcuts made available specifically for the eval scope
 			const client = interaction.client;
+			const twitch = client.twitch;
+
 			const start = Date.now();
 
 			// Execute the code

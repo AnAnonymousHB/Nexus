@@ -2,12 +2,24 @@ import { Client, Collection, GatewayIntentBits, Options, Partials } from "discor
 import path from "path";
 import { fileURLToPath } from "url";
 
+import { ApiClient } from "@twurple/api";
+import { ChatClient } from "@twurple/chat";
+
 import { DiscordButton, DiscordCommand, DiscordModal, DiscordSelectMenu } from "../types/index.js";
 import { Loader } from "../utils/index.js";
-import { DiscordGuildManager, Logger } from "./index.js";
+import { Logger, TwitchManager } from "./index.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+declare module "discord.js" {
+	export interface Client {
+		twitch: {
+			api: ApiClient;
+			client: ChatClient;
+		};
+	}
+}
 
 export class DiscordManager {
 	public static client: Client;
@@ -45,7 +57,14 @@ export class DiscordManager {
 			}),
 		});
 
-		//TODO: Add Twitch integration here
+		this.client.twitch = {
+			api: TwitchManager.api,
+			client: TwitchManager.client,
+		};
+
+		if (!TwitchManager.api) {
+			Logger.warn("DISCORD", "TwitchManager was not initialized before Discord. Twitch features will be unavailable.");
+		}
 
 		Logger.setDiscordClient(this.client);
 		try {
