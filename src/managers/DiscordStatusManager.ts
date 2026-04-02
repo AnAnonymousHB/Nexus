@@ -96,16 +96,19 @@ export class DiscordStatusManager {
 
 	private buildStatusEmbed(incident: Incident) {
 		const colors: Record<string, number> = {
-			resolved: 0x2ecc71,
-			monitoring: 0x3498db,
-			investigating: 0xe67e22,
-			critical: 0xe74c3c,
+			critical: 0xe74c3c, // Red
+			major: 0xe67e22, // Orange
+			minor: 0xf1c40f, // Yellow
+			none: 0x3498db, // Blue
 		};
+
+		const isResolved = incident.status === "resolved" || incident.status === "postmortem";
+		const embedColor = isResolved ? 0x2ecc71 : colors[incident.impact] || colors.none;
 
 		const embed = new EmbedBuilder()
 			.setTitle(incident.name)
 			.setURL(incident.shortlink)
-			.setColor(colors[incident.status] || 0x3498db)
+			.setColor(embedColor)
 			.setDescription(`* Impact: ${bold(incident.impact || "None")}`)
 			.setTimestamp(new Date(incident.updated_at))
 			.setFooter({ text: incident.id });
