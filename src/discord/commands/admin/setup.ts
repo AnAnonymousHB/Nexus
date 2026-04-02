@@ -13,6 +13,7 @@ interface SetupState {
 	modRoles: string[];
 	adminRoles: string[];
 	modLogChannel?: TextChannel;
+	enableTickets?: boolean;
 }
 
 const LOG_CHANNEL_REQUIRED_PERMS = [
@@ -38,6 +39,7 @@ const setup: DiscordCommand = {
 			currentStep: 0,
 			modRoles: [],
 			adminRoles: [],
+			enableTickets: false,
 		};
 
 		const welcomeEmbed = new EmbedBuilder()
@@ -68,6 +70,18 @@ const setup: DiscordCommand = {
 			time: 60_000 * 3,
 		});
 
+		const globalCollector = msg.createMessageComponentCollector({
+			filter: (i) => i.user.id !== interaction.user.id,
+			time: 60_000 * 3,
+		});
+
+		globalCollector.on("collect", async (i) => {
+			await i.reply({
+				content: "❌ This setup wizard is not for you. Please run your own `/setup` command.",
+				flags: [MessageFlags.Ephemeral],
+			});
+		});
+
 		collector.on("collect", async (i) => {
 			try {
 				if (i.customId === "go_back") {
@@ -76,9 +90,7 @@ const setup: DiscordCommand = {
 					return;
 				}
 
-				if (i.customId === "cancel_setup") {
-					return collector.stop("Cancelled");
-				}
+				if (i.customId === "cancel_setup") return collector.stop("Cancelled");
 
 				switch (i.customId) {
 					case "start_setup":
@@ -124,18 +136,14 @@ const setup: DiscordCommand = {
 						}
 
 						state.modLogChannel = selectedChannel;
-						// Proceed to confirmation or completion
-						const success = await applyChannelPermissions(state.modLogChannel, interaction, state, true);
-						if (success) collector.stop("Complete");
+						await applyChannelPermissions(state.modLogChannel, interaction, state, true);
+						state.currentStep = 5; // Move to tickets
+						await i.update(getStep5());
+						break;
 
-					// Fallthrough to confirm
 					case "confirm_modlog":
-						if (state.modLogChannel) {
-							const success = await applyChannelPermissions(state.modLogChannel, interaction, state, true);
-							if (success) collector.stop("Complete");
-						} else {
-							collector.stop("Complete"); // No channel selected, just finish
-						}
+						state.currentStep = 5;
+						await i.update(getStep5());
 						break;
 
 					case "make_modlog":
@@ -154,12 +162,38 @@ const setup: DiscordCommand = {
 					case "private_modlog":
 					case "public_modlog":
 						const isPrivate = i.customId === "private_modlog";
-						state.modLogChannel = await createModLog(interaction, state, isPrivate);
-						if (state.modLogChannel) collector.stop("Complete");
-						break;
+                        state.modLogChannel = await createModLog(interaction, state, isPrivate);
+                        
+                        state.currentStep = 5;
+                        await i.update(getStep5());
+                        break;
 
 					case "cancel_setup":
 						collector.stop("Cancelled");
+						break;
+
+					case "enable_tickets":
+						const botPerms = interaction.guild?.members.me?.permissions;
+						if (!botPerms?.has([PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ManageRoles])) {
+							return void (await i.reply({
+								content: `❌ I need both ${inlineCode("Manage Channels")} and ${inlineCode("Manage Roles")} permissions to set up the ticketing system.`,
+								flags: [MessageFlags.Ephemeral],
+							}));
+						}
+
+						state.enableTickets = true;
+						collector.stop("Complete");
+						break;
+
+					case "skip_tickets":
+						// Check if the category already exists before marking as disabled
+						const existingCategory = interaction.guild?.channels.cache.find(
+							(c) => c.name === "Tickets" && c.type === ChannelType.GuildCategory,
+						);
+
+						// If it exists, we keep it enabled in the final report
+						state.enableTickets = !!existingCategory;
+						collector.stop("Complete");
 						break;
 				}
 			} catch (err) {
@@ -173,6 +207,18 @@ const setup: DiscordCommand = {
 					logChannelId: state.modLogChannel?.id ?? "",
 					roles: { admin: state.adminRoles, mod: state.modRoles },
 				});
+
+				if (state.enableTickets) {
+					const success = await handleTicketSetup(interaction, state);
+					state.enableTickets = success;
+				}
+
+				const existingCategory = interaction.guild?.channels.cache.find((c) => c.name === "Tickets" && c.type === ChannelType.GuildCategory);
+
+				const ticketValue =
+					existingCategory ? "✅ Already Setup"
+					: state.enableTickets ? "✅ Newly Enabled"
+					: "❌ Disabled";
 
 				const finalEmbed = new EmbedBuilder()
 					.setAuthor({
@@ -191,11 +237,16 @@ const setup: DiscordCommand = {
 							value: state.modLogChannel ? channelMention(state.modLogChannel.id) : "None",
 							inline: false,
 						},
+						{ name: "Tickets", value: ticketValue, inline: true },
 					)
 					.setTimestamp()
 					.setFooter({ text: "Saved Successfully" });
 
-				await interaction.editReply({ content: "Settings saved!", embeds: [finalEmbed], components: [] });
+				await interaction.editReply({
+					content: state.enableTickets ? "Settings saved!" : "Settings saved (with errors).",
+					embeds: [finalEmbed],
+					components: [],
+				});
 			} else {
 				const content = reason === "Cancelled" ? "Setup cancelled." : "Setup timed out.";
 				await interaction.editReply({ content, embeds: [], components: [] });
@@ -203,6 +254,96 @@ const setup: DiscordCommand = {
 		});
 	},
 };
+
+async function handleTicketSetup(interaction: ChatInputCommandInteraction, state: SetupState) {
+	const { guild } = interaction;
+	const botMember = guild?.members.me;
+
+	if (!guild || !botMember) return false;
+
+	const existing = guild.channels.cache.find((c) => c.name === "Tickets" && c.type === ChannelType.GuildCategory);
+	if (existing) {
+		Logger.info("TICKET_SETUP", `Category already exists for ${guild.name} (${guild.id}), skipping creation.`);
+		return true;
+	}
+
+	try {
+		const baseOverwrites: OverwriteResolvable[] = [
+			{
+				id: guild.id, // @everyone
+				deny: [PermissionFlagsBits.ViewChannel],
+			},
+			{
+				id: botMember.id,
+				allow: [
+					PermissionFlagsBits.ViewChannel,
+					PermissionFlagsBits.SendMessages,
+					PermissionFlagsBits.EmbedLinks,
+					PermissionFlagsBits.ManageChannels,
+					PermissionFlagsBits.ManageRoles,
+				],
+			},
+		];
+
+		[...state.modRoles, ...state.adminRoles].forEach((id) => {
+			baseOverwrites.push({
+				id,
+				allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks],
+			});
+		});
+
+		const category = await guild.channels.create({
+			name: "Tickets",
+			type: ChannelType.GuildCategory,
+			permissionOverwrites: baseOverwrites,
+		});
+
+		const supportChannel = await guild.channels.create({
+			name: "open-a-ticket",
+			type: ChannelType.GuildText,
+			parent: category.id,
+			permissionOverwrites: [
+				...baseOverwrites,
+				{
+					id: guild.id, // Allow everyone to SEE this specific channel to click the button
+					allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory],
+					deny: [PermissionFlagsBits.SendMessages],
+				},
+			],
+		});
+
+		const ticketEmbed = new EmbedBuilder()
+			.setTitle("🎫 Support Ticket System")
+			.setDescription(
+				"Need assistance? Our team is here to help.\n\n" +
+					"**How it works:**\n" +
+					"* Click on the button below.\n" +
+					"* You will then be prompted to provide a reason for opening the ticket.\n" +
+					"* A new private channel will be created for you.\n" +
+					"* You will be able to type and share additional details in that channel.\n\n" +
+					"**Rules:**\n" +
+					"* You can only create **one ticket** at a time.\n" +
+					"* Do not abuse this feature. Only create tickets if needed.",
+			)
+			.setColor("#5865F2")
+			.setFooter({ text: "Official Support System" });
+
+		const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+			new ButtonBuilder().setCustomId("open_ticket").setLabel("Open Ticket").setStyle(ButtonStyle.Primary).setEmoji("📩"),
+		);
+
+		await supportChannel.send({ embeds: [ticketEmbed], components: [row] });
+		return true;
+	} catch (err) {
+		Logger.error("TICKET_SETUP", "Failed to auto-create ticket system", err);
+		await interaction.followUp({
+			content:
+				"⚠️ I failed to create the ticket category. Ensure I have the **Administrator** or **Manage Channels** and **Manage Roles** permissions globally.",
+			flags: [MessageFlags.Ephemeral],
+		});
+		return false;
+	}
+}
 
 async function updateDisplay(i: MessageComponentInteraction, state: SetupState, interaction: ChatInputCommandInteraction) {
 	const guildName = interaction.guild!.name;
@@ -239,12 +380,13 @@ function getStep1(guildName: string) {
 			new EmbedBuilder()
 				.setTitle("Step 1: Moderators")
 				.setDescription(`Select up to 3 moderator roles for ${bold(guildName)}.`)
-				.setFooter({ text: getProgressBar(1, 4) }),
+				.setFooter({ text: getProgressBar(1, 5) }),
 		],
 		components: [
 			new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(
 				new RoleSelectMenuBuilder().setCustomId("mod_roles").setMinValues(1).setMaxValues(3),
 			),
+			getNavigationRow(false),
 		],
 	};
 }
@@ -255,7 +397,7 @@ function getStep2(guildName: string) {
 			new EmbedBuilder()
 				.setTitle("Step 2: Admins")
 				.setDescription(`Select up to 2 admin roles for ${bold(guildName)}. Roles cannot overlap with moderators.`)
-				.setFooter({ text: getProgressBar(2, 4) }),
+				.setFooter({ text: getProgressBar(2, 5) }),
 		],
 		components: [
 			new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(
@@ -272,7 +414,7 @@ function getStep3() {
 			new EmbedBuilder()
 				.setTitle("Step 3: Logging")
 				.setDescription("Select a channel for moderation logs or let me create one.")
-				.setFooter({ text: getProgressBar(3, 4) }),
+				.setFooter({ text: getProgressBar(3, 5) }),
 		],
 		components: [
 			new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(
@@ -282,6 +424,7 @@ function getStep3() {
 				new ButtonBuilder().setCustomId("make_modlog").setLabel("Create New Channel").setStyle(ButtonStyle.Primary),
 				new ButtonBuilder().setCustomId("confirm_modlog").setLabel("Skip/Finish").setStyle(ButtonStyle.Success),
 			),
+			getNavigationRow(),
 		],
 	};
 }
@@ -302,13 +445,35 @@ function getStep4() {
 			new EmbedBuilder()
 				.setTitle("Step 4: Visibility")
 				.setDescription(description)
-				.setFooter({ text: getProgressBar(4, 4) }),
+				.setFooter({ text: getProgressBar(4, 5) }),
 		],
 		components: [
 			new ActionRowBuilder<ButtonBuilder>().addComponents(
 				new ButtonBuilder().setCustomId("private_modlog").setLabel("Private").setStyle(ButtonStyle.Primary),
 				new ButtonBuilder().setCustomId("public_modlog").setLabel("Public").setStyle(ButtonStyle.Secondary),
 			),
+			getNavigationRow(),
+		],
+	};
+}
+
+function getStep5() {
+	return {
+		embeds: [
+			new EmbedBuilder()
+				.setTitle("Step 5: Ticketing System")
+				.setDescription(
+					"Would you like to enable a support ticketing system?\n\n" +
+						"If enabled, I will create a **Tickets** category and a support channel where users can open private tickets.",
+				)
+				.setFooter({ text: getProgressBar(5, 5) }), // Updated total to 5
+		],
+		components: [
+			new ActionRowBuilder<ButtonBuilder>().addComponents(
+				new ButtonBuilder().setCustomId("enable_tickets").setLabel("Yes, Setup Tickets").setStyle(ButtonStyle.Success),
+				new ButtonBuilder().setCustomId("skip_tickets").setLabel("No, Skip").setStyle(ButtonStyle.Secondary),
+			),
+			getNavigationRow(),
 		],
 	};
 }
