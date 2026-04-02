@@ -1,6 +1,7 @@
 export * from "./CountryManager.js";
 export * from "./DiscordGuildManager.js";
 export * from "./DiscordManager.js";
+export * from "./DiscordModerationManager.js";
 export * from "./DiscordUserManager.js";
 export * from "./InviteManager.js";
 export * from "./LoggerManager.js";
