@@ -1,12 +1,6 @@
 import {
-	ActionRowBuilder,
-	ButtonBuilder,
-	ButtonStyle,
-	ChannelType,
-	Client as DiscordClient,
-	EmbedBuilder,
-	PermissionFlagsBits,
-	TextChannel,
+	ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, Client as DiscordClient,
+	EmbedBuilder, PermissionFlagsBits, TextChannel
 } from "discord.js";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -207,7 +201,7 @@ export class TwitchManager {
 				allowedMentions: { parse: ["roles"] },
 			});
 
-			if (channel.type === ChannelType.GuildAnnouncement) {
+			if (channel.type === ChannelType.GuildAnnouncement && notify.autoPublish) {
 				const permissions = channel.permissionsFor(discordClient.user!);
 				if (permissions?.has(PermissionFlagsBits.ManageMessages)) {
 					await message.crosspost().catch((err) => Logger.error("DISCORD_TWITCH_ALERT", `Failed to crosspost in ${channel.name}`, err));

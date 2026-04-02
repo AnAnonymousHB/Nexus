@@ -21,6 +21,7 @@ const twitchModal: DiscordModal = {
 
 		const [, action, twitchId, twitchName, channelId, roleId] = customId.split(":");
 		const liveMessage = fields.getTextInputValue("twitch_message");
+		const autoPublish = fields.getCheckbox("twitch_auto_publish");
 
 		await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
@@ -66,6 +67,7 @@ const twitchModal: DiscordModal = {
 				{
 					discordChannelId: channelId,
 					liveMessage: liveMessage,
+					autoPublish: autoPublish,
 					pingRoleId: roleId === "none" ? null : roleId,
 				},
 			);

@@ -1,8 +1,25 @@
 import {
-	ActionRowBuilder, AutocompleteInteraction, bold, ButtonBuilder, ButtonStyle, channelMention,
-	ChannelType, ChatInputCommandInteraction, ComponentType, ContextMenuCommandInteraction,
-	EmbedBuilder, hideLinkEmbed, hyperlink, MessageFlags, ModalBuilder, PermissionFlagsBits,
-	SlashCommandBuilder, TextInputBuilder, TextInputStyle
+	ActionRowBuilder,
+	AutocompleteInteraction,
+	bold,
+	ButtonBuilder,
+	ButtonStyle,
+	channelMention,
+	ChannelType,
+	ChatInputCommandInteraction,
+	CheckboxBuilder,
+	ComponentType,
+	ContextMenuCommandInteraction,
+	EmbedBuilder,
+	hideLinkEmbed,
+	hyperlink,
+	LabelBuilder,
+	MessageFlags,
+	ModalBuilder,
+	PermissionFlagsBits,
+	SlashCommandBuilder,
+	TextInputBuilder,
+	TextInputStyle,
 } from "discord.js";
 
 import { DiscordGuildManager, Logger, TwitchManager } from "../../../managers/index.js";
@@ -90,44 +107,54 @@ async function handleAdd(interaction: ChatInputCommandInteraction) {
 	const channelId = interaction.options.getChannel("channel", true).id;
 	const roleId = interaction.options.getRole("role")?.id || "none";
 
-	const twitchData = await TwitchManager.verifyUser(twitchUser);
-	if (!twitchData) {
-		return void (await interaction.reply({
-			content: `❌ Twitch user ${bold(twitchUser)} does not exist.`,
-			flags: [MessageFlags.Ephemeral],
-		}));
+	try {
+		const twitchData = await TwitchManager.verifyUser(twitchUser);
+		if (!twitchData) {
+			return void (await interaction.reply({
+				content: `❌ Twitch user ${bold(twitchUser)} does not exist.`,
+				flags: [MessageFlags.Ephemeral],
+			}));
+		}
+
+		const url = hideLinkEmbed(`https://www.twitch.tv/${twitchData.displayName}`);
+
+		const existing = await TwitchManager.getNotification(interaction.guildId!, twitchData.id);
+		if (existing) {
+			return void (await interaction.reply({
+				content: `❌ ${bold(hyperlink(twitchData.displayName, url))} is already being tracked in ${channelMention(existing.discordChannelId)}.\nUse \`/twitch edit\` if you want to change the settings.`,
+				flags: [MessageFlags.Ephemeral],
+			}));
+		}
+
+		const modal = new ModalBuilder()
+			.setCustomId(`twitch_modal:setup:${twitchData.id}:${twitchData.displayName}:${channelId}:${roleId}`)
+			.setTitle(`Setup: ${twitchData.displayName}`);
+
+		const twitchInput = new TextInputBuilder()
+			.setCustomId("twitch_message")
+			.setValue("🔴 {user} is now live playing {game}! {url}\n\nToday's stream: {title}")
+			.setStyle(TextInputStyle.Paragraph)
+			.setRequired(true)
+			.setMaxLength(1000);
+
+		const twitchInputLabel = new LabelBuilder()
+			.setLabel("Live notification message")
+			.setDescription("You can use the following tags: {user}, {url}, {game}, {title}")
+			.setTextInputComponent(twitchInput);
+
+		const autoPublish = new CheckboxBuilder().setCustomId("twitch_auto_publish").setDefault(true);
+		const autoPublishLabel = new LabelBuilder()
+			.setLabel("Auto Publish?")
+			.setDescription("Share with all servers following your announcement channel")
+			.setCheckboxComponent(autoPublish);
+
+		modal.addLabelComponents(twitchInputLabel, autoPublishLabel);
+
+		await interaction.showModal(modal);
+	} catch (err) {
+		Logger.error("DISCORD_TWITCH_ADD", "An error has happened in Twitch add", err);
+		await interaction.reply({ content: "An error has occurred. Please try again.", flags: MessageFlags.Ephemeral });
 	}
-
-	const url = hideLinkEmbed(`https://www.twitch.tv/${twitchData.displayName}`);
-
-	const existing = await TwitchManager.getNotification(interaction.guildId!, twitchData.id);
-	if (existing) {
-		return void (await interaction.reply({
-			content: `❌ ${bold(hyperlink(twitchData.displayName, url))} is already being tracked in ${channelMention(existing.discordChannelId)}.\nUse \`/twitch edit\` if you want to change the settings.`,
-			flags: [MessageFlags.Ephemeral],
-		}));
-	}
-
-	const modal = new ModalBuilder({
-		custom_id: `twitch_modal:setup:${twitchData.id}:${twitchData.displayName}:${channelId}:${roleId}`,
-		title: `Setup: ${twitchData.displayName}`,
-		components: [
-			new ActionRowBuilder<TextInputBuilder>()
-				.addComponents(
-					new TextInputBuilder({
-						custom_id: "twitch_message",
-						label: "Message Tags ({user}, {url}, {game}, {title})",
-						value: "🔴 {user} is now live playing {game}! {url}\n\nToday's stream: {title}",
-						style: TextInputStyle.Paragraph,
-						required: true,
-						maxLength: 1000,
-					}),
-				)
-				.toJSON(),
-		],
-	});
-
-	await interaction.showModal(modal);
 }
 
 async function handleEdit(interaction: ChatInputCommandInteraction) {
@@ -135,43 +162,53 @@ async function handleEdit(interaction: ChatInputCommandInteraction) {
 	const newChannel = interaction.options.getChannel("channel");
 	const newRole = interaction.options.getRole("role");
 
-	const twitchData = await TwitchManager.verifyUser(streamer);
-	if (!twitchData) {
-		return void (await interaction.reply({
-			content: `❌ Twitch user ${bold(streamer)} does not exist.`,
-			flags: [MessageFlags.Ephemeral],
-		}));
+	try {
+		const twitchData = await TwitchManager.verifyUser(streamer);
+		if (!twitchData) {
+			return void (await interaction.reply({
+				content: `❌ Twitch user ${bold(streamer)} does not exist.`,
+				flags: [MessageFlags.Ephemeral],
+			}));
+		}
+
+		// Pulls from cache via TwitchManager
+		const notify = await TwitchManager.getNotification(interaction.guildId!, twitchData.id);
+		if (!notify) {
+			return void (await interaction.reply({ content: "❌ I am currently not tracking that streamer.", flags: [MessageFlags.Ephemeral] }));
+		}
+
+		const finalChannelId = newChannel?.id || notify.discordChannelId;
+		const finalRoleId = newRole?.id || notify.pingRoleId || "none";
+
+		const modal = new ModalBuilder()
+			.setCustomId(`twitch_modal:edit:${twitchData.id}:${twitchData.displayName}:${finalChannelId}:${finalRoleId}`)
+			.setTitle(`Editing: ${twitchData.displayName}`);
+
+		const twitchInput = new TextInputBuilder()
+			.setCustomId("twitch_message")
+			.setValue(notify.liveMessage)
+			.setStyle(TextInputStyle.Paragraph)
+			.setRequired(true)
+			.setMaxLength(1000);
+
+		const twitchInputLabel = new LabelBuilder()
+			.setLabel("Edit live notification message")
+			.setDescription("You can use the following tags: {user}, {url}, {game}, {title}")
+			.setTextInputComponent(twitchInput);
+
+		const autoPublish = new CheckboxBuilder().setCustomId("twitch_auto_publish").setDefault(notify.autoPublish ?? true);
+		const autoPublishLabel = new LabelBuilder()
+			.setLabel("Auto Publish?")
+			.setDescription("Share with all servers following your announcement channel")
+			.setCheckboxComponent(autoPublish);
+
+		modal.addLabelComponents(twitchInputLabel, autoPublishLabel);
+
+		await interaction.showModal(modal);
+	} catch (err) {
+		Logger.error("DISCORD_TWITCH_EDIT", "An error has happened in Twitch edit", err);
+		await interaction.reply({ content: "An error has occurred. Please try again.", flags: MessageFlags.Ephemeral });
 	}
-
-	// Pulls from cache via TwitchManager
-	const notify = await TwitchManager.getNotification(interaction.guildId!, twitchData.id);
-	if (!notify) {
-		return void (await interaction.reply({ content: "❌ I am currently not tracking that streamer.", flags: [MessageFlags.Ephemeral] }));
-	}
-
-	const finalChannelId = newChannel?.id || notify.discordChannelId;
-	const finalRoleId = newRole?.id || notify.pingRoleId || "none";
-
-	const modal = new ModalBuilder({
-		custom_id: `twitch_modal:edit:${twitchData.id}:${twitchData.displayName}:${finalChannelId}:${finalRoleId}`,
-		title: `Editing: ${twitchData.displayName}`,
-		components: [
-			new ActionRowBuilder<TextInputBuilder>()
-				.addComponents(
-					new TextInputBuilder({
-						custom_id: "twitch_message",
-						label: "Edit Message",
-						value: notify.liveMessage,
-						style: TextInputStyle.Paragraph,
-						required: true,
-						maxLength: 1000,
-					}),
-				)
-				.toJSON(),
-		],
-	});
-
-	await interaction.showModal(modal);
 }
 
 async function handleRemove(interaction: ChatInputCommandInteraction) {

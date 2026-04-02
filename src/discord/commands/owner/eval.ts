@@ -1,6 +1,6 @@
 import {
-	ActionRowBuilder, ChatInputCommandInteraction, ContextMenuCommandInteraction, MessageFlags,
-	ModalBuilder, SlashCommandBuilder, TextInputBuilder, TextInputStyle
+	ChatInputCommandInteraction, ContextMenuCommandInteraction, LabelBuilder, ModalBuilder,
+	SlashCommandBuilder, TextInputBuilder, TextInputStyle
 } from "discord.js";
 
 import { DiscordCommand } from "../../../types/index.js";
@@ -12,21 +12,17 @@ const evalCommand: DiscordCommand = {
 	async execute(interaction: ChatInputCommandInteraction | ContextMenuCommandInteraction) {
 		if (!interaction.isChatInputCommand()) return;
 
-		const codeInput = new TextInputBuilder({
-			custom_id: "eval_code",
-			label: "What code are we running?",
-			style: TextInputStyle.Paragraph,
-			placeholder: "await interaction.reply('Hello World!');",
-			required: true,
-		});
+		const modal = new ModalBuilder().setCustomId("eval_modal").setTitle("Execute Code");
 
-		const row = new ActionRowBuilder<TextInputBuilder>().addComponents(codeInput);
+		const codeInput = new TextInputBuilder()
+			.setCustomId("eval_code")
+			.setPlaceholder("await interaction.channel.send('Hello World!');")
+			.setStyle(TextInputStyle.Paragraph)
+			.setRequired(true);
 
-		const modal = new ModalBuilder({
-			custom_id: "eval_modal",
-			title: "Execute Code",
-			components: [row.toJSON()],
-		});
+		const codeInputLabel = new LabelBuilder().setLabel("What code do you want to run?").setTextInputComponent(codeInput);
+
+		modal.addLabelComponents(codeInputLabel);
 
 		await interaction.showModal(modal);
 	},

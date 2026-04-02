@@ -76,7 +76,7 @@ export class DiscordGuildManager {
 	 */
 	static async addTwitchNotification(
 		guildId: string,
-		notification: { twitchChannelName: string; discordChannelId: string; liveMessage?: string },
+		notification: { twitchChannelName: string; discordChannelId: string; liveMessage?: string; autoPublish?: boolean },
 	): Promise<IGuild | null> {
 		const updated = await GuildModel.findOneAndUpdate(
 			{ guildId },
@@ -94,7 +94,7 @@ export class DiscordGuildManager {
 	static async updateTwitchNotification(
 		guildId: string,
 		twitch: { id: string; name: string },
-		updates: { discordChannelId: string; liveMessage: string; pingRoleId?: string | null },
+		updates: { discordChannelId: string; liveMessage: string; autoPublish: boolean; pingRoleId?: string | null },
 	): Promise<IGuild | null> {
 		// Try to update an existing entry in the array
 		let updated = await GuildModel.findOneAndUpdate(
@@ -104,6 +104,7 @@ export class DiscordGuildManager {
 					"twitchNotifications.$.twitchChannelName": twitch.name, // The string name (e.g. 'shroud')
 					"twitchNotifications.$.discordChannelId": updates.discordChannelId,
 					"twitchNotifications.$.liveMessage": updates.liveMessage,
+					"twitchNotifications.$.autoPublish": updates.autoPublish,
 					"twitchNotifications.$.pingRoleId": updates.pingRoleId,
 				},
 			},
@@ -121,6 +122,7 @@ export class DiscordGuildManager {
 							twitchChannelName: twitch.name,
 							discordChannelId: updates.discordChannelId,
 							liveMessage: updates.liveMessage,
+							autoPublish: updates.autoPublish,
 							pingRoleId: updates.pingRoleId,
 							isLive: false,
 						},
