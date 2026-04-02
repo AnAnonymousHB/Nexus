@@ -1,13 +1,27 @@
 import {
-	ActionRowBuilder, APIRole, bold, ButtonBuilder, ButtonStyle, ChannelSelectMenuBuilder,
-	ChannelType, ChatInputCommandInteraction, Collection, ContextMenuCommandInteraction,
-	EmbedBuilder, inlineCode, italic, Message, MessageComponentInteraction, MessageFlags,
-	OverwriteResolvable, OverwriteType, PermissionFlagsBits, Role, RoleSelectMenuBuilder,
-	SlashCommandBuilder, TextChannel
+	ActionRowBuilder, bold, ButtonBuilder, ButtonStyle, channelMention, ChannelSelectMenuBuilder,
+	ChannelType, ChatInputCommandInteraction, ContextMenuCommandInteraction, EmbedBuilder,
+	inlineCode, italic, Message, MessageComponentInteraction, MessageFlags, OverwriteResolvable,
+	PermissionFlagsBits, roleMention, RoleSelectMenuBuilder, SlashCommandBuilder, TextChannel
 } from "discord.js";
 
 import { DiscordGuildManager, Logger } from "../../../managers/index.js";
 import { DiscordCommand } from "../../../types/index.js";
+
+interface SetupState {
+	currentStep: number;
+	modRoles: string[];
+	adminRoles: string[];
+	modLogChannel?: TextChannel;
+}
+
+const LOG_CHANNEL_REQUIRED_PERMS = [
+	PermissionFlagsBits.ViewChannel,
+	PermissionFlagsBits.SendMessages,
+	PermissionFlagsBits.EmbedLinks,
+	PermissionFlagsBits.AttachFiles,
+	PermissionFlagsBits.ManageRoles,
+];
 
 const setup: DiscordCommand = {
 	userPermissions: [PermissionFlagsBits.ManageGuild],
@@ -20,358 +34,337 @@ const setup: DiscordCommand = {
 
 		if (!interaction.guild || !interaction.guildId) return;
 
-		const embed = new EmbedBuilder()
-			.setColor("#00dcff")
-			.setThumbnail(interaction.client.user.defaultAvatarURL)
-			.setTimestamp()
-			.setTitle(`Welcome to ${interaction.client.user.displayName}`)
-			.setDescription(
-				`This is the setup wizard for ${interaction.client.user.displayName}.\n\nThis will guide you through the process of setting up ${interaction.client.user.displayName} for ${interaction.guild.name}.`,
-			);
+		const state: SetupState = {
+			currentStep: 0,
+			modRoles: [],
+			adminRoles: [],
+		};
 
-		const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+		const welcomeEmbed = new EmbedBuilder()
+			.setColor("#00dcff")
+			.setTitle(`Welcome to ${interaction.client.user.displayName}`)
+			.setDescription(`This wizard will guide you through setting up moderation for ${bold(interaction.guild.name)}.`)
+			.setTimestamp();
+
+		const startRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
 			new ButtonBuilder().setCustomId("start_setup").setLabel("Let's get started").setStyle(ButtonStyle.Primary),
+			new ButtonBuilder().setCustomId("cancel_setup").setLabel("Cancel").setStyle(ButtonStyle.Danger),
 		);
 
-		const response = await interaction.reply({ embeds: [embed], components: [row], withResponse: true });
+		const initialMessage = await interaction.reply({
+			embeds: [welcomeEmbed],
+			components: [startRow],
+			withResponse: true,
+		});
 
-		const msg_id = response.interaction.responseMessageId;
+		const msg_id = initialMessage.interaction.responseMessageId;
 		if (!msg_id) return;
 
 		let msg = (await interaction.channel?.messages.fetch(msg_id)) as Message<boolean>;
 		if (!msg) return;
 
-		const collector = msg.createMessageComponentCollector({ time: 60_000 * 3 });
-
-		let modRoles: Collection<string, Role | APIRole>;
-		let adminRoles: Collection<string, Role | APIRole>;
-		let modLogChannel: TextChannel | undefined;
+		const collector = msg.createMessageComponentCollector({
+			filter: (i) => i.user.id === interaction.user.id,
+			time: 60_000 * 3,
+		});
 
 		collector.on("collect", async (i) => {
-			if (i.user.id !== interaction.user.id) {
-				return void (await i.followUp({
-					content: "This isn't for you.",
-					flags: MessageFlags.Ephemeral,
-				}));
-			}
+			try {
+				if (i.customId === "go_back") {
+					state.currentStep--;
+					await updateDisplay(i, state, interaction);
+					return;
+				}
 
-			switch (i.customId) {
-				case "start_setup":
-					collector.resetTimer();
-					await step1(i, msg);
-					break;
+				if (i.customId === "cancel_setup") {
+					return collector.stop("Cancelled");
+				}
 
-				case "mod_roles":
-					collector.resetTimer();
-
-					if (!i.isRoleSelectMenu()) break;
-					modRoles = i.roles;
-
-					msg = await step2(i, msg);
-					break;
-
-				case "admin_roles":
-					collector.resetTimer();
-
-					if (!i.isRoleSelectMenu()) break;
-					adminRoles = i.roles;
-
-					if (adminRoles.some((r) => modRoles.has(r.id))) {
-						await i.reply({
-							content: `Moderation roles and Administration roles cannot be the same!`,
-							flags: MessageFlags.Ephemeral,
-						});
+				switch (i.customId) {
+					case "start_setup":
+						state.currentStep = 1;
+						await i.update(getStep1(interaction.guild!.name));
 						break;
-					}
-					msg = await step3(i, msg);
-					break;
 
-				case "retry_modlog":
-					collector.resetTimer();
-					modLogChannel = undefined;
-					msg = await step3(i, msg);
-					break;
+					case "mod_roles":
+						if (!i.isRoleSelectMenu()) return;
 
-				case "modlog_channel":
-					if (!i.isChannelSelectMenu()) break;
-					modLogChannel = i.channels.first() as TextChannel;
-				case "confirm_modlog":
-					const edit = await modLogChannel!
-						.edit({
-							permissionOverwrites: permissions(
-								!modLogChannel!.permissionsFor(interaction.guild!.roles.everyone).has(PermissionFlagsBits.ViewChannel),
-							),
-						})
-						.catch(async (err) => {
-							Logger.error("DISCORD_SETUP_CONFIRM_MOD_LOG", "Error in Discord setup", err);
-							i.channel &&
-								i.channel.isSendable() &&
-								(await i.followUp({
-									content: `I am unable to edit permissions of ${modLogChannel}. Please grant me admin permission or click on "Make a new modlog"`,
-									flags: MessageFlags.Ephemeral,
-								}));
-							return null;
-						});
-					if (edit) {
-						collector.stop("Complete");
-					} else {
-						collector.resetTimer();
-						modLogChannel = undefined;
-						msg = await step3(i, msg);
-					}
-					break;
+						state.modRoles = i.values;
+						state.currentStep = 2;
+						await i.update(getStep2(interaction.guild!.name));
+						break;
 
-				case "make_modlog":
-					if (!interaction.guild!.members.me?.permissions.has(PermissionFlagsBits.ManageChannels)) {
-						await i.followUp({
-							content: `I don't have the permissions to create channels!\nPlease give me the ${inlineCode("Manage Channels")} permission!`,
-							flags: MessageFlags.Ephemeral,
-						});
-						return;
-					}
+					case "admin_roles":
+						if (!i.isRoleSelectMenu()) return;
 
-					collector.resetTimer();
-					modLogChannel = undefined;
+						if (i.values.some((id) => state.modRoles.includes(id))) {
+							return void (await i.reply({
+								content: "Admin and Mod roles cannot overlap!",
+								flags: [MessageFlags.Ephemeral],
+							}));
+						}
 
-					msg = await step4(i, msg);
-					break;
+						state.adminRoles = i.values;
+						state.currentStep = 3;
+						await i.update(getStep3());
+						break;
 
-				case "public_modlog":
-				case "private_modlog":
-					modLogChannel = await makeModLog(i.customId === "private_modlog")
-						.then((c) => {
-							collector.stop("Complete");
-							return c;
-						})
-						.catch(async (err) => {
-							Logger.error("DISCORD_SETUP_PRIVATE_MOD_LOG", "Error in Discord setup", err);
+					case "modlog_channel":
+						if (!i.isChannelSelectMenu()) return;
 
-							if (!i.replied) await i.deferUpdate();
-							await i.followUp({
-								content:
-									`I couldn't create the modlog channel due to insufficient permissions!\nPlease try again after granting ` +
-									`${inlineCode("Manage Channels")} [Creation of Channel], ${inlineCode("Manage Roles")} [To configure channel permissions], ${inlineCode("Embed Links and Send Messages")} [To send modlogs] permissions to me!\n` +
-									`**Note:** I need a role other than @everyone with the mentioned permissions!\n>`,
-								flags: MessageFlags.Ephemeral,
-							});
-							return undefined;
-						});
-					break;
+						const selectedChannel = i.channels.first() as TextChannel;
+						const botPermissions = selectedChannel.permissionsFor(interaction.client.user!);
+
+						const missing = LOG_CHANNEL_REQUIRED_PERMS.filter((perm) => !botPermissions?.has(perm));
+						if (missing.length > 0) {
+							return void (await i.reply({
+								content: `❌ I cannot use ${channelMention(selectedChannel.id)} because I am missing the following permissions: ${missing.map((p) => inlineCode(p.toString())).join(", ")}.`,
+								flags: [MessageFlags.Ephemeral],
+							}));
+						}
+
+						state.modLogChannel = selectedChannel;
+						// Proceed to confirmation or completion
+						const success = await applyChannelPermissions(state.modLogChannel, interaction, state, true);
+						if (success) collector.stop("Complete");
+
+					// Fallthrough to confirm
+					case "confirm_modlog":
+						if (state.modLogChannel) {
+							const success = await applyChannelPermissions(state.modLogChannel, interaction, state, true);
+							if (success) collector.stop("Complete");
+						} else {
+							collector.stop("Complete"); // No channel selected, just finish
+						}
+						break;
+
+					case "make_modlog":
+						// Check if bot can actually create channels in this guild
+						if (!interaction.guild?.members.me?.permissions.has(PermissionFlagsBits.ManageChannels)) {
+							return void (await i.reply({
+								content: `❌ I am missing the ${bold("Manage Channels")} permission required to create a new channel.`,
+								flags: [MessageFlags.Ephemeral],
+							}));
+						}
+
+						state.currentStep = 4;
+						await i.update(getStep4());
+						break;
+
+					case "private_modlog":
+					case "public_modlog":
+						const isPrivate = i.customId === "private_modlog";
+						state.modLogChannel = await createModLog(interaction, state, isPrivate);
+						if (state.modLogChannel) collector.stop("Complete");
+						break;
+
+					case "cancel_setup":
+						collector.stop("Cancelled");
+						break;
+				}
+			} catch (err) {
+				Logger.error("DISCORD_SETUP_WIZARD", "Interaction Error", err);
 			}
 		});
 
-		collector.on("end", async (c, r) => {
-			if (r === "Complete") {
-				const data = await DiscordGuildManager.updateSettings(interaction.guildId!, {
-					logChannelId: modLogChannel?.id ?? "",
-					roles: { admin: adminRoles.map((a) => a.id), mod: modRoles.map((m) => m.id) },
+		collector.on("end", async (_, reason) => {
+			if (reason === "Complete") {
+				await DiscordGuildManager.updateSettings(interaction.guildId!, {
+					logChannelId: state.modLogChannel?.id ?? "",
+					roles: { admin: state.adminRoles, mod: state.modRoles },
 				});
 
 				const finalEmbed = new EmbedBuilder()
-					.setColor("#00dcff")
-					.setDescription("Here is a quick overview of your setup!")
-					.addFields(
-						{
-							name: "Moderator Roles",
-							value: modRoles.map((r) => r).join(", "),
-							inline: true,
-						},
-						{
-							name: "Admin Roles",
-							value: adminRoles.map((r) => r).join(", ") || "None",
-							inline: true,
-						},
-						{
-							name: "Moderation Logs Channel",
-							value: modLogChannel ? `${modLogChannel}` : "None",
-						},
-					)
-					.setTimestamp()
 					.setAuthor({
 						name: interaction.user.globalName ?? interaction.user.username,
 						iconURL: interaction.user.displayAvatarURL({ forceStatic: false }),
 					})
-					.setFooter({ text: `${data ? "Saved Successfully" : "Created Successfully"}` });
+					.setColor("#2ecc71")
+					.setTitle("✅ Setup Complete")
+					.setThumbnail(interaction.guild?.iconURL() ?? null)
+					.setDescription("Here is a quick overview of your setup.")
+					.addFields(
+						{ name: "Moderator Roles", value: state.modRoles.map((id) => roleMention(id)).join(", ") || "None", inline: true },
+						{ name: "Admin Roles", value: state.adminRoles.map((id) => roleMention(id)).join(", ") || "None", inline: true },
+						{
+							name: "Moderation Logs Channel",
+							value: state.modLogChannel ? channelMention(state.modLogChannel.id) : "None",
+							inline: false,
+						},
+					)
+					.setTimestamp()
+					.setFooter({ text: "Saved Successfully" });
 
-				await msg.edit({
-					content: `Setup completed!`,
-					embeds: [finalEmbed],
-					components: [],
-				});
-				return;
+				await interaction.editReply({ content: "Settings saved!", embeds: [finalEmbed], components: [] });
+			} else {
+				const content = reason === "Cancelled" ? "Setup cancelled." : "Setup timed out.";
+				await interaction.editReply({ content, embeds: [], components: [] });
 			}
 		});
-
-		async function makeModLog(isPrivate: boolean) {
-			const modlog = await interaction.guild?.channels.create({
-				name: "mod-log",
-				type: ChannelType.GuildText,
-				topic: `Moderation log for ${interaction.guild?.name}`,
-				permissionOverwrites: permissions(isPrivate),
-			});
-			return modlog;
-		}
-
-		function permissions(isPrivate: boolean) {
-			let permissionOverwrites: OverwriteResolvable[] = [];
-
-			if (isPrivate) {
-				permissionOverwrites = [
-					{
-						id: interaction.guild!.id,
-						deny: [PermissionFlagsBits.ViewChannel],
-						type: OverwriteType.Role,
-					},
-					{
-						id: interaction.client.user.id,
-						allow: [
-							PermissionFlagsBits.ViewChannel,
-							PermissionFlagsBits.SendMessages,
-							PermissionFlagsBits.EmbedLinks,
-							PermissionFlagsBits.ManageChannels,
-							PermissionFlagsBits.AttachFiles,
-						],
-						type: OverwriteType.Member,
-					},
-				];
-
-				const permissions = (id: string, mod: boolean): OverwriteResolvable => {
-					return {
-						id,
-						allow: [PermissionFlagsBits.ViewChannel],
-						deny: mod ? [PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels] : [],
-						type: OverwriteType.Role,
-					};
-				};
-
-				for (const mod of modRoles.keys()) {
-					permissionOverwrites.push(permissions(mod, true));
-				}
-
-				for (const admin of adminRoles.keys()) {
-					permissionOverwrites.push(permissions(admin, false));
-				}
-			} else {
-				permissionOverwrites = [
-					{
-						id: interaction.guild!.id,
-						allow: [PermissionFlagsBits.ViewChannel],
-						deny: [PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels],
-						type: OverwriteType.Role,
-					},
-					{
-						id: interaction.client.user.id,
-						allow: [
-							PermissionFlagsBits.SendMessages,
-							PermissionFlagsBits.ManageChannels,
-							PermissionFlagsBits.EmbedLinks,
-							PermissionFlagsBits.AttachFiles,
-						],
-						type: OverwriteType.Member,
-					},
-				];
-			}
-
-			return permissionOverwrites;
-		}
 	},
 };
 
-async function step1(interaction: MessageComponentInteraction, prevMsg: Message) {
-	const embed = new EmbedBuilder(prevMsg.embeds[0].data).addFields({
-		name: `What are the Moderator roles for ${interaction.guild?.name}? [Min: 1, Max: 3]`,
-		value: `Only the ${bold("selected")} roles below will be considered as moderators.`,
-	});
+async function updateDisplay(i: MessageComponentInteraction, state: SetupState, interaction: ChatInputCommandInteraction) {
+	const guildName = interaction.guild!.name;
 
-	const rolesMenu = new RoleSelectMenuBuilder().setCustomId("mod_roles").setPlaceholder("Select moderator roles").setMinValues(1).setMaxValues(3);
-
-	const interactionResponse = await interaction.update({
-		embeds: [embed],
-		components: [new ActionRowBuilder<RoleSelectMenuBuilder>().setComponents([rolesMenu])],
-		withResponse: true,
-	});
-
-	return (interaction.channel?.messages.cache.get(interactionResponse.interaction.responseMessageId!) ||
-		(await interaction.channel?.messages.fetch(interactionResponse.interaction.responseMessageId!))) as Message<boolean>;
+	if (state.currentStep === 1) await i.update(getStep1(guildName));
+	else if (state.currentStep === 2) await i.update(getStep2(guildName));
+	else if (state.currentStep === 3) await i.update(getStep3());
+	else if (state.currentStep === 4) await i.update(getStep4());
 }
 
-async function step2(interaction: MessageComponentInteraction, prevMsg: Message) {
-	const embed = new EmbedBuilder(prevMsg.embeds[0].data).addFields({
-		name: `What are the Admin roles for ${interaction.guild?.name}? [Max: 2]`,
-		value:
-			`Only the ${bold("selected")} roles below will be considered as admins\n\n` +
-			`${bold("Note")}: ${italic("Moderation roles and Admin roles cannot be the same")}`,
-	});
+function getProgressBar(current: number, total: number): string {
+	const size = 10;
+	const progress = Math.round((size * current) / total);
+	const emptyProgress = size - progress;
 
-	const rolesMenu = new RoleSelectMenuBuilder().setCustomId("admin_roles").setPlaceholder("Select admin roles").setMinValues(0).setMaxValues(2);
+	const progressText = "▰".repeat(progress);
+	const emptyProgressText = "▱".repeat(emptyProgress);
 
-	const interactionResponse = await interaction.update({
-		embeds: [embed],
-		components: [new ActionRowBuilder<RoleSelectMenuBuilder>().setComponents([rolesMenu])],
-		withResponse: true,
-	});
-
-	return (interaction.channel?.messages.cache.get(interactionResponse.interaction.responseMessageId!) ||
-		(await interaction.channel?.messages.fetch(interactionResponse.interaction.responseMessageId!))) as Message<boolean>;
+	return `Step ${current} of ${total} [${progressText}${emptyProgressText}]`;
 }
 
-async function step3(interaction: MessageComponentInteraction, prevMsg: Message) {
-	const embed = new EmbedBuilder(prevMsg.embeds[0].data).addFields({
-		name: `Where should moderation logs be sent?`,
-		value:
-			`If you ${bold("don't have")} any channel, you can tell me to create one!\n` +
-			`If you ${bold("don't wamt")} to have a mod log channel, press confirm!`,
-	});
+function getNavigationRow(showBack: boolean = true) {
+	const row = new ActionRowBuilder<ButtonBuilder>();
+	if (showBack) {
+		row.addComponents(new ButtonBuilder().setCustomId("go_back").setLabel("Back").setStyle(ButtonStyle.Secondary));
+	}
+	row.addComponents(new ButtonBuilder().setCustomId("cancel_setup").setLabel("Cancel").setStyle(ButtonStyle.Danger));
+	return row;
+}
 
-	const channelMenu = new ChannelSelectMenuBuilder()
-		.setCustomId("modlog_channel")
-		.setPlaceholder("Select modlogs channel")
-		.setMinValues(0)
-		.setMaxValues(1)
-		.setChannelTypes(ChannelType.GuildText);
-
-	const interactionResponse = await interaction.update({
-		embeds: [embed],
-		components: [
-			new ActionRowBuilder<ChannelSelectMenuBuilder>().setComponents([channelMenu]),
-			new ActionRowBuilder<ButtonBuilder>().setComponents([
-				new ButtonBuilder().setCustomId("retry_modlog").setLabel("Retry").setStyle(ButtonStyle.Secondary),
-				new ButtonBuilder().setCustomId("make_modlog").setLabel("Make a new modlog").setStyle(ButtonStyle.Primary),
-				new ButtonBuilder().setCustomId("confirm_modlog").setLabel("Confirm").setStyle(ButtonStyle.Success),
-			]),
+function getStep1(guildName: string) {
+	return {
+		embeds: [
+			new EmbedBuilder()
+				.setTitle("Step 1: Moderators")
+				.setDescription(`Select up to 3 moderator roles for ${bold(guildName)}.`)
+				.setFooter({ text: getProgressBar(1, 4) }),
 		],
-		withResponse: true,
-	});
-
-	return (interaction.channel?.messages.cache.get(interactionResponse.interaction.responseMessageId!) ||
-		(await interaction.channel?.messages.fetch(interactionResponse.interaction.responseMessageId!))) as Message<boolean>;
+		components: [
+			new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(
+				new RoleSelectMenuBuilder().setCustomId("mod_roles").setMinValues(1).setMaxValues(3),
+			),
+		],
+	};
 }
 
-async function step4(interaction: MessageComponentInteraction, prevMsg: Message) {
-	const embed = new EmbedBuilder(prevMsg.embeds[0].data).addFields({
-		name: `What should be the visibility be of the modlog?`,
-		value:
-			`If the modlog is ${italic("private")}, only the moderators will be able to see it.\n` +
-			`If the modlog is ${italic("public")}, everyone will be able to see it.\n` +
-			`Please press the appropriate button\n` +
-			`* Note: I need ${inlineCode("Manage Channels")} and ${inlineCode("Manage Roles")} permissions to configure permissions ` +
-			`of the modlog channel on @everyone role!\n` +
-			`* It is compulsory that I should have a role other than @everyone!\n` +
-			`* Once created successfully, feel free to tune permissions of the modlog channel`,
-	});
-
-	const interactionResponse = await interaction.update({
-		embeds: [embed],
+function getStep2(guildName: string) {
+	return {
+		embeds: [
+			new EmbedBuilder()
+				.setTitle("Step 2: Admins")
+				.setDescription(`Select up to 2 admin roles for ${bold(guildName)}. Roles cannot overlap with moderators.`)
+				.setFooter({ text: getProgressBar(2, 4) }),
+		],
 		components: [
-			new ActionRowBuilder<ButtonBuilder>().setComponents([
+			new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(
+				new RoleSelectMenuBuilder().setCustomId("admin_roles").setMinValues(0).setMaxValues(2),
+			),
+			getNavigationRow(),
+		],
+	};
+}
+
+function getStep3() {
+	return {
+		embeds: [
+			new EmbedBuilder()
+				.setTitle("Step 3: Logging")
+				.setDescription("Select a channel for moderation logs or let me create one.")
+				.setFooter({ text: getProgressBar(3, 4) }),
+		],
+		components: [
+			new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(
+				new ChannelSelectMenuBuilder().setCustomId("modlog_channel").setChannelTypes(ChannelType.GuildText),
+			),
+			new ActionRowBuilder<ButtonBuilder>().addComponents(
+				new ButtonBuilder().setCustomId("make_modlog").setLabel("Create New Channel").setStyle(ButtonStyle.Primary),
+				new ButtonBuilder().setCustomId("confirm_modlog").setLabel("Skip/Finish").setStyle(ButtonStyle.Success),
+			),
+		],
+	};
+}
+
+function getStep4() {
+	const description =
+		`Should the new log channel be private (mods only) or public?\n\n` +
+		`If the modlog is ${italic("private")}, only the moderators will be able to see it.\n` +
+		`If the modlog is ${italic("public")}, everyone will be able to see it.\n` +
+		`Please press the appropriate button\n\n` +
+		`* Note: I need ${inlineCode("Manage Channels")} and ${inlineCode("Manage Roles")} permissions to configure permissions ` +
+		`of the modlog channel on @everyone role!\n` +
+		`* It is compulsory that I should have a role other than @everyone!\n` +
+		`* Once created successfully, feel free to tune permissions of the modlog channel`;
+
+	return {
+		embeds: [
+			new EmbedBuilder()
+				.setTitle("Step 4: Visibility")
+				.setDescription(description)
+				.setFooter({ text: getProgressBar(4, 4) }),
+		],
+		components: [
+			new ActionRowBuilder<ButtonBuilder>().addComponents(
 				new ButtonBuilder().setCustomId("private_modlog").setLabel("Private").setStyle(ButtonStyle.Primary),
-				new ButtonBuilder().setCustomId("public_modlog").setLabel("Public").setStyle(ButtonStyle.Primary),
-			]),
+				new ButtonBuilder().setCustomId("public_modlog").setLabel("Public").setStyle(ButtonStyle.Secondary),
+			),
 		],
-		withResponse: true,
-	});
-
-	return (interaction.channel?.messages.cache.get(interactionResponse.interaction.responseMessageId!) ||
-		(await interaction.channel?.messages.fetch(interactionResponse.interaction.responseMessageId!))) as Message<boolean>;
+	};
 }
+
+async function createModLog(interaction: ChatInputCommandInteraction, state: SetupState, isPrivate: boolean) {
+	const channel = await interaction.guild?.channels.create({
+		name: "mod-log",
+		type: ChannelType.GuildText,
+		permissionOverwrites: getPermissions(interaction, state, isPrivate),
+	});
+	return channel as TextChannel;
+}
+
+async function applyChannelPermissions(channel: TextChannel, interaction: ChatInputCommandInteraction, state: SetupState, isPrivate: boolean) {
+	const botMember = interaction.guild!.members.me || (await interaction.guild!.members.fetch(interaction.client.user.id));
+
+	if (!channel.permissionsFor(botMember).has(PermissionFlagsBits.ManageRoles)) {
+		await interaction.followUp({
+			content: `⚠️ I don't have the ${bold("Manage Roles")} permission in ${channelMention(channel.id)}. I need this to restrict the channel to your Mod/Admin roles.`,
+			flags: [MessageFlags.Ephemeral],
+		});
+		return false;
+	}
+
+	try {
+		await channel.edit({
+			permissionOverwrites: getPermissions(interaction, state, isPrivate),
+		});
+		return true;
+	} catch (e) {
+		Logger.error("DISCORD_SETUP_WIZARD", "Failed to edit channel permissions", e);
+		await interaction.followUp({
+			content: "An unexpected error occurred while updating channel permissions. Check if my role is high enough in the hierarchy.",
+			flags: [MessageFlags.Ephemeral],
+		});
+		return false;
+	}
+}
+
+function getPermissions(interaction: ChatInputCommandInteraction, state: SetupState, isPrivate: boolean): OverwriteResolvable[] {
+	const overwrites: OverwriteResolvable[] = [
+		{
+			id: interaction.client.user.id,
+			allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks],
+		},
+	];
+
+	if (isPrivate) {
+		overwrites.push({ id: interaction.guild!.id, deny: [PermissionFlagsBits.ViewChannel] });
+		state.modRoles.forEach((id) => overwrites.push({ id, allow: [PermissionFlagsBits.ViewChannel] }));
+		state.adminRoles.forEach((id) => overwrites.push({ id, allow: [PermissionFlagsBits.ViewChannel] }));
+	} else {
+		overwrites.push({ id: interaction.guild!.id, allow: [PermissionFlagsBits.ViewChannel], deny: [PermissionFlagsBits.SendMessages] });
+	}
+
+	return overwrites;
+}
+
 export default setup;
