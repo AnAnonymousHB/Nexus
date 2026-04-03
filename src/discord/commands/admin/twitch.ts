@@ -1,9 +1,26 @@
 import {
-	ActionRowBuilder, AutocompleteInteraction, bold, ButtonBuilder, ButtonStyle, channelMention,
-	ChannelType, ChatInputCommandInteraction, CheckboxBuilder, ComponentType,
-	ContextMenuCommandInteraction, EmbedBuilder, hideLinkEmbed, hyperlink, inlineCode, LabelBuilder,
-	MessageFlags, ModalBuilder, PermissionFlagsBits, SlashCommandBuilder, TextInputBuilder,
-	TextInputStyle
+	ActionRowBuilder,
+	AutocompleteInteraction,
+	bold,
+	ButtonBuilder,
+	ButtonStyle,
+	channelMention,
+	ChannelType,
+	ChatInputCommandInteraction,
+	CheckboxBuilder,
+	ComponentType,
+	ContextMenuCommandInteraction,
+	EmbedBuilder,
+	hideLinkEmbed,
+	hyperlink,
+	inlineCode,
+	LabelBuilder,
+	MessageFlags,
+	ModalBuilder,
+	PermissionFlagsBits,
+	SlashCommandBuilder,
+	TextInputBuilder,
+	TextInputStyle,
 } from "discord.js";
 
 import { HelixStream } from "@twurple/api";
@@ -137,13 +154,20 @@ async function handleAdd(interaction: ChatInputCommandInteraction) {
 			.setDescription("You can use the following tags: {user}, {url}, {game}, {title}")
 			.setTextInputComponent(twitchInput);
 
-		const autoPublish = new CheckboxBuilder().setCustomId("twitch_auto_publish").setDefault(true);
+		const autoPublish = new CheckboxBuilder().setCustomId("twitch_auto_publish").setDefault(false);
 		const autoPublishLabel = new LabelBuilder()
 			.setLabel("Auto Publish?")
 			.setDescription("Share with all servers following your announcement channel")
 			.setCheckboxComponent(autoPublish);
 
-		modal.addLabelComponents(twitchInputLabel, autoPublishLabel);
+		const targetChannel = await interaction.guild!.channels.fetch(channelId);
+		if (!targetChannel) return;
+
+		if (targetChannel.type === ChannelType.GuildAnnouncement) {
+			modal.addLabelComponents(twitchInputLabel, autoPublishLabel);
+		} else {
+			modal.addLabelComponents(twitchInputLabel);
+		}
 
 		await interaction.showModal(modal);
 	} catch (err) {
@@ -191,13 +215,20 @@ async function handleEdit(interaction: ChatInputCommandInteraction) {
 			.setDescription("You can use the following tags: {user}, {url}, {game}, {title}")
 			.setTextInputComponent(twitchInput);
 
-		const autoPublish = new CheckboxBuilder().setCustomId("twitch_auto_publish").setDefault(notify.autoPublish ?? true);
+		const autoPublish = new CheckboxBuilder().setCustomId("twitch_auto_publish").setDefault(notify.autoPublish ?? false);
 		const autoPublishLabel = new LabelBuilder()
 			.setLabel("Auto Publish?")
 			.setDescription("Share with all servers following your announcement channel")
 			.setCheckboxComponent(autoPublish);
 
-		modal.addLabelComponents(twitchInputLabel, autoPublishLabel);
+		const targetChannel = await interaction.guild!.channels.fetch(finalChannelId);
+		if (!targetChannel) return;
+
+		if (targetChannel.type === ChannelType.GuildAnnouncement) {
+			modal.addLabelComponents(twitchInputLabel, autoPublishLabel);
+		} else {
+			modal.addLabelComponents(twitchInputLabel);
+		}
 
 		await interaction.showModal(modal);
 	} catch (err) {

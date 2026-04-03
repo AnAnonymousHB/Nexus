@@ -44,7 +44,7 @@ const GuildSchema = new Schema<IGuild>({
 				pingRoleId: { type: String, default: null },
 				isLive: { type: Boolean, default: false },
 				lastMessageId: { type: String, default: null },
-				autoPublish: { type: Boolean, default: true },
+				autoPublish: { type: Boolean, default: false },
 			},
 		],
 		default: [],

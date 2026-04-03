@@ -21,7 +21,7 @@ const twitchModal: DiscordModal = {
 
 		const [, action, twitchId, twitchName, channelId, roleId] = customId.split(":");
 		const liveMessage = fields.getTextInputValue("twitch_message");
-		const autoPublish = fields.getCheckbox("twitch_auto_publish");
+		let autoPublish = false;
 
 		await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
@@ -35,6 +35,8 @@ const twitchModal: DiscordModal = {
 					content: `❌ Please select a regular text or announcement channel.`,
 				}));
 			}
+
+			if (targetChannel.type === ChannelType.GuildAnnouncement) autoPublish = fields.getCheckbox("twitch_auto_publish");
 
 			const botMember = await guild.members.fetch(guild.client.user!.id);
 			const botPermissions = targetChannel.permissionsFor(botMember);
