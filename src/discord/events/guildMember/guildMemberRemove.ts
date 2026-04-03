@@ -1,10 +1,13 @@
 import { AuditLogEvent, Client, ColorResolvable, EmbedBuilder, Events } from "discord.js";
 
-import { DiscordModerationManager, Logger } from "../../../managers/index.js";
+import { DiscordGuildManager, DiscordModerationManager, Logger } from "../../../managers/index.js";
 
 export default (client: Client) => {
 	client.on(Events.GuildMemberRemove, async (member) => {
 		const { guild, user } = member;
+
+		if (!(await DiscordGuildManager.isEventEnabled(guild.id, "guildMemberRemove"))) return;
+
 		const leaveTimestamp = Math.floor(Date.now() / 1000);
 
 		const embed = new EmbedBuilder()

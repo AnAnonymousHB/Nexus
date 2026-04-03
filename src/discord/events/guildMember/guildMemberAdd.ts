@@ -1,10 +1,14 @@
 import { Client, EmbedBuilder, Events } from "discord.js";
 
-import { DiscordModerationManager, InviteManager } from "../../../managers/index.js";
+import {
+	DiscordGuildManager, DiscordModerationManager, InviteManager
+} from "../../../managers/index.js";
 
 export default (client: Client) => {
 	client.on(Events.GuildMemberAdd, async (member) => {
 		const { guild, user, joinedTimestamp } = member;
+
+		if (!(await DiscordGuildManager.isEventEnabled(guild.id, "guildMemberAdd"))) return;
 
 		// Fetch Invite Data
 		const usedInvite = await InviteManager.findUsedInvite(guild);

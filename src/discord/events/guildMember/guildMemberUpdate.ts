@@ -1,10 +1,12 @@
 import { AuditLogEvent, Client, EmbedBuilder, Events } from "discord.js";
 
-import { DiscordModerationManager, Logger } from "../../../managers/index.js";
+import { DiscordGuildManager, DiscordModerationManager, Logger } from "../../../managers/index.js";
 
 export default (client: Client) => {
 	client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
 		const { guild, user } = newMember;
+
+		if (!(await DiscordGuildManager.isEventEnabled(guild.id, "guildMemberUpdate"))) return;
 
 		const embed = new EmbedBuilder()
 			.setAuthor({ name: `${user.tag}`, iconURL: user.displayAvatarURL() })
