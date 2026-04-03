@@ -1,6 +1,14 @@
 import {
-	ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, Client as DiscordClient,
-	EmbedBuilder, PermissionFlagsBits, TextChannel
+	ActionRowBuilder,
+	ButtonBuilder,
+	ButtonStyle,
+	ChannelType,
+	Client as DiscordClient,
+	EmbedBuilder,
+	escapeMarkdown,
+	PermissionFlagsBits,
+	roleMention,
+	TextChannel,
 } from "discord.js";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -82,12 +90,13 @@ export class TwitchManager {
 	 */
 	private static formatLiveMessage(template: string, stream: HelixStream, roleId?: string | null): string {
 		const url = `https://twitch.tv/${stream.userName}`;
-		const rolePing = roleId ? `<@&${roleId}>` : "";
+		const rolePing = roleId ? roleMention(roleId) : "";
+
 		const formatted = template
-			.replace(/{user}/g, stream.userDisplayName)
-			.replace(/{url}/g, url)
-			.replace(/{game}/g, stream.gameName || "Unknown")
-			.replace(/{title}/g, stream.title || "No Title");
+			.replace(/{user}/g, escapeMarkdown(stream.userDisplayName.trim()))
+			.replace(/{url}/g, url.trim())
+			.replace(/{game}/g, stream.gameName.trim() || "Unknown")
+			.replace(/{title}/g, stream.title.trim() || "No Title");
 
 		return `${rolePing}\n\n${formatted}`.trim();
 	}
