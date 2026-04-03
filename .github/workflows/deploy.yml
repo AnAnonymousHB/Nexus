@@ -5,8 +5,8 @@ on:
         branches: [main] # Triggers when you push to the main branch
 
 jobs:
-    deploy:
-        runs-on: ubuntu-latest
+  deploy:
+    runs-on: ubuntu-latest
 
         steps:
             - name: Checkout Code
