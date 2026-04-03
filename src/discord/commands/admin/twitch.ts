@@ -1,26 +1,12 @@
 import {
-	ActionRowBuilder,
-	AutocompleteInteraction,
-	bold,
-	ButtonBuilder,
-	ButtonStyle,
-	channelMention,
-	ChannelType,
-	ChatInputCommandInteraction,
-	CheckboxBuilder,
-	ComponentType,
-	ContextMenuCommandInteraction,
-	EmbedBuilder,
-	hideLinkEmbed,
-	hyperlink,
-	LabelBuilder,
-	MessageFlags,
-	ModalBuilder,
-	PermissionFlagsBits,
-	SlashCommandBuilder,
-	TextInputBuilder,
-	TextInputStyle,
+	ActionRowBuilder, AutocompleteInteraction, bold, ButtonBuilder, ButtonStyle, channelMention,
+	ChannelType, ChatInputCommandInteraction, CheckboxBuilder, ComponentType,
+	ContextMenuCommandInteraction, EmbedBuilder, hideLinkEmbed, hyperlink, inlineCode, LabelBuilder,
+	MessageFlags, ModalBuilder, PermissionFlagsBits, SlashCommandBuilder, TextInputBuilder,
+	TextInputStyle
 } from "discord.js";
+
+import { HelixStream } from "@twurple/api";
 
 import { DiscordGuildManager, Logger, TwitchManager } from "../../../managers/index.js";
 import { DiscordCommand } from "../../../types/index.js";
@@ -61,7 +47,11 @@ const twitch: DiscordCommand = {
 				.setDescription("Add a new streamer to track")
 				.addStringOption((opt) => opt.setName("username").setDescription("Twitch username").setAutocomplete(true).setRequired(true))
 				.addChannelOption((opt) =>
-					opt.setName("channel").setDescription("Where to send alerts").addChannelTypes(ChannelType.GuildText).setRequired(true),
+					opt
+						.setName("channel")
+						.setDescription("Where to send alerts")
+						.addChannelTypes([ChannelType.GuildText, ChannelType.GuildAnnouncement])
+						.setRequired(true),
 				)
 				.addRoleOption((opt) => opt.setName("role").setDescription("Role to ping when live")),
 		)
@@ -70,7 +60,12 @@ const twitch: DiscordCommand = {
 				.setName("edit")
 				.setDescription("Edit an existing notification")
 				.addStringOption((opt) => opt.setName("streamer").setDescription("Streamer to edit").setAutocomplete(true).setRequired(true))
-				.addChannelOption((opt) => opt.setName("channel").setDescription("New Discord channel"))
+				.addChannelOption((opt) =>
+					opt
+						.setName("channel")
+						.setDescription("New Discord channel")
+						.addChannelTypes([ChannelType.GuildText, ChannelType.GuildAnnouncement]),
+				)
 				.addRoleOption((opt) => opt.setName("role").setDescription("Role to ping when live")),
 		)
 		.addSubcommand((sub) =>
@@ -103,7 +98,7 @@ const twitch: DiscordCommand = {
 };
 
 async function handleAdd(interaction: ChatInputCommandInteraction) {
-	const twitchUser = interaction.options.getString("username", true);
+	const twitchUser = interaction.options.getString("username", true).trim();
 	const channelId = interaction.options.getChannel("channel", true).id;
 	const roleId = interaction.options.getRole("role")?.id || "none";
 
@@ -224,13 +219,19 @@ async function handleAddAutocomplete(interaction: AutocompleteInteraction) {
 	if (!focusedValue) return interaction.respond([]);
 
 	try {
+		const trackedNames = await TwitchManager.getTrackedStreamers(interaction.guildId!);
+		const lowerTrackedNames = trackedNames.map((name) => name.toLowerCase());
+
 		const searchResults = await TwitchManager.api.search.searchChannels(focusedValue);
 		const choices = searchResults.data
 			.map((channel) => ({
 				name: channel.displayName,
-				value: channel.name,
+				value: channel.displayName,
 			}))
+			// Filter out streamers whose 'value' (login name) is already in the tracked list
+			.filter((choice) => !lowerTrackedNames.includes(choice.value.toLowerCase()))
 			.slice(0, 25);
+
 		await interaction.respond(choices);
 	} catch (err) {
 		Logger.error("DISCORD_TWITCH_SETUP_AUTOCOMPLETE", "Twitch API error", err);
@@ -258,7 +259,8 @@ async function handleList(interaction: ChatInputCommandInteraction) {
 	if (!guildId) return;
 
 	const settings = await DiscordGuildManager.getSettings(guildId);
-	const allNotifications = settings.twitchNotifications || [];
+	// Sort by whomever is List first
+	const allNotifications = [...(settings.twitchNotifications || [])].sort((a, b) => Number(b.isLive) - Number(a.isLive));
 	const totalCount = allNotifications.length;
 
 	if (totalCount === 0) {
@@ -271,13 +273,24 @@ async function handleList(interaction: ChatInputCommandInteraction) {
 	await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
 	let currentPage = 0;
-	const limit = 10;
+	const limit = 5;
 	const totalPages = Math.ceil(allNotifications.length / limit);
 
 	// Helper to generate the Embed and Buttons
-	const generateMessageOptions = (page: number) => {
+	const generateMessageOptions = async (page: number) => {
 		const skip = page * limit;
 		const items = allNotifications.slice(skip, skip + limit);
+
+		const liveIds = items.filter((n) => n.isLive).map((n) => n.twitchUserId);
+		let liveStreams: HelixStream[] = [];
+
+		if (liveIds.length > 0) {
+			try {
+				liveStreams = await TwitchManager.api.streams.getStreamsByUserIds(liveIds);
+			} catch (err) {
+				Logger.error("DISCORD_TWITCH_LIST", "Failed to fetch live metadata", err);
+			}
+		}
 
 		const embed = new EmbedBuilder()
 			.setAuthor({ name: `Twitch Management: ${totalCount} Channel${totalCount === 1 ? "" : "s"} Tracked` })
@@ -288,8 +301,19 @@ async function handleList(interaction: ChatInputCommandInteraction) {
 
 		const listString = items
 			.map((n) => {
-				const status = n.isLive ? `${bold("🟢 LIVE")}` : "⚪ Offline";
-				return `${bold(n.twitchChannelName)}\n└ Channel: ${channelMention(n.discordChannelId)}\n└ Status: ${status}`;
+				const status = n.isLive ? `🟢 ${bold("LIVE")}` : "⚪ Offline";
+				const streamInfo = liveStreams.find((s) => s.userId === n.twitchUserId);
+				const url = `https://www.twitch.tv/${n.twitchChannelName.trim()}`;
+
+				let entry = `${bold(n.isLive ? hyperlink(n.twitchChannelName.trim(), url) : n.twitchChannelName)}\n`;
+				entry += `└ Channel: ${channelMention(n.discordChannelId)}\n`;
+				entry += `└ Status: ${status}`;
+
+				if (n.isLive && streamInfo?.gameName) {
+					entry += `\n└ Playing: ${inlineCode(streamInfo.gameName)}`;
+				}
+
+				return entry;
 			})
 			.join("\n\n");
 
@@ -311,7 +335,7 @@ async function handleList(interaction: ChatInputCommandInteraction) {
 		return { embeds: [embed], components: [row] };
 	};
 
-	const response = await interaction.editReply(generateMessageOptions(currentPage));
+	const response = await interaction.editReply(await generateMessageOptions(currentPage));
 
 	const collector = response.createMessageComponentCollector({
 		componentType: ComponentType.Button,
@@ -327,13 +351,21 @@ async function handleList(interaction: ChatInputCommandInteraction) {
 		if (i.customId === "prev") currentPage--;
 		if (i.customId === "next") currentPage++;
 
-		await i.update(generateMessageOptions(currentPage));
+		await i.update(await generateMessageOptions(currentPage));
 	});
 
 	collector.on("end", async () => {
 		// Disable buttons after timeout to prevent "Interaction Failed"
-		const finalOptions = generateMessageOptions(currentPage);
-		finalOptions.components[0].components.forEach((btn) => btn.setDisabled(true));
+		const finalOptions = await generateMessageOptions(currentPage);
+
+		finalOptions.components.forEach((row) => {
+			row.components.forEach((component) => {
+				// Check if setDisabled exists (it does for Buttons and Select Menus)
+				if ("setDisabled" in component) {
+					component.setDisabled(true);
+				}
+			});
+		});
 
 		await interaction.editReply(finalOptions).catch(() => null);
 	});

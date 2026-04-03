@@ -1,13 +1,13 @@
 import {
 	bold,
 	channelMention,
+	ChannelType,
 	hideLinkEmbed,
 	hyperlink,
 	MessageFlags,
 	ModalSubmitInteraction,
 	PermissionFlagsBits,
 	roleMention,
-	TextChannel,
 } from "discord.js";
 
 import { DiscordGuildManager, Logger } from "../../../managers/index.js";
@@ -28,10 +28,11 @@ const twitchModal: DiscordModal = {
 		try {
 			// --- PERMISSION CHECK START ---
 			const targetChannel = await guild.channels.fetch(channelId).catch(() => null);
+			const allowedTypes = [ChannelType.GuildText, ChannelType.GuildAnnouncement];
 
-			if (!targetChannel || !(targetChannel instanceof TextChannel)) {
+			if (!targetChannel || !allowedTypes.includes(targetChannel.type)) {
 				return void (await interaction.editReply({
-					content: `❌ I couldn't find the channel ${channelMention(channelId)}. Please try again.`,
+					content: `❌ Please select a regular text or announcement channel.`,
 				}));
 			}
 
@@ -63,7 +64,7 @@ const twitchModal: DiscordModal = {
 
 			const updated = await DiscordGuildManager.updateTwitchNotification(
 				guildId,
-				{ id: twitchId, name: twitchName },
+				{ id: twitchId, name: twitchName.trim() },
 				{
 					discordChannelId: channelId,
 					liveMessage: liveMessage,
@@ -76,12 +77,12 @@ const twitchModal: DiscordModal = {
 
 			const actionText = action === "setup" ? "added" : "updated";
 			const role = pingRole ? ` (Pinging ${roleMention(pingRole)})` : "";
-			const url = hideLinkEmbed(`https://www.twitch.tv/${twitchName}`);
+			const url = hideLinkEmbed(`https://www.twitch.tv/${twitchName.trim()}`);
 
 			await interaction.editReply({
 				content:
 					`✅ ${bold(`Twitch Notification ${actionText.toUpperCase()}!`)}\n` +
-					`I am now monitoring ${bold(hyperlink(twitchName, url))} in ${channelMention(channelId)}${role}.`,
+					`I am now monitoring ${bold(hyperlink(twitchName.trim(), url))} in ${channelMention(channelId)}${role}.`,
 			});
 		} catch (error) {
 			Logger.error("DISCORD_TWITCH_MODAL_SUBMIT", `Failed for guild ${interaction.guild?.name}`, error);
