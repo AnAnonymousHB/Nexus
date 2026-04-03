@@ -1,34 +1,39 @@
 name: Deploy Nexus
 
 on:
-  push:
-    branches: [ main ] # Triggers when you push to the main branch
+    push:
+        branches: [main] # Triggers when you push to the main branch
 
 jobs:
-  deploy:
-    runs-on: ubuntu-latest
+    deploy:
+        runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+        steps:
+            - name: Checkout Code
+              uses: actions/checkout@v4
 
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          port: ${{ secrets.SSH_PORT }}
-          script: |
-            # Navigate to your bot folder
-            cd ~/nexus
+            - name: Deploy via SSH
+              uses: appleboy/ssh-action@v1.0.3
+              with:
+                  host: ${{ secrets.SSH_HOST }}
+                  username: ${{ secrets.SSH_USER }}
+                  key: ${{ secrets.SSH_KEY }}
+                  port: ${{ secrets.SSH_PORT }}
+                  script: |
+                      # Clone the repository if it doesn't exist
+                      if [ ! -d "Nexus" ]; then
+                        git clone git@github.com:AnAnonymousHB/Nexus.git
+                      fi
 
-            # Pull latest changes
-            git pull origin main
+                      # Navigate to the bot directory
+                      cd Nexus
 
-            # Install dependencies and build
-            npm install
-            npm run build
+                      # Pull latest changes
+                      git pull origin main
 
-            # Restart the bot with PM2
-            pm2 restart nexus --update-env
+                      # Install dependencies and build
+                      npm install
+                      npm run build
+
+                      # Restart the bot with PM2
+                      pm2 restart nexus --update-env
