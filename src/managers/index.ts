@@ -6,6 +6,7 @@ export * from "./DiscordStatusManager.js";
 export * from "./DiscordUserManager.js";
 export * from "./InviteManager.js";
 export * from "./LoggerManager.js";
+export * from "./SyncManager.js";
 export * from "./TwitchChannelManager.js";
 export * from "./TwitchCustomCommandManager.js";
 export * from "./TwitchManager.js";
