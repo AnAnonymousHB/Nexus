@@ -266,10 +266,16 @@ export class TwitchManager {
 	private static async handleStreamEnd(discordClient: DiscordClient, notify: ITwitchNotification) {
 		try {
 			if (!notify.lastMessageId) return;
-			const channel = await discordClient.channels.fetch(notify.discordChannelId).catch(() => null);
+			const channel = await discordClient.channels
+				.fetch(notify.discordChannelId)
+				.catch((err) => Logger.error("DISCORD_TWITCH_STREAM_END", "Error fetching channel", err));
+
 			if (!(channel instanceof TextChannel)) return;
 
-			const message = await channel.messages.fetch(notify.lastMessageId).catch(() => null);
+			const message = await channel.messages
+				.fetch(notify.lastMessageId)
+				.catch((err) => Logger.error("DISCORD_TWITCH_STREAM_END", "Error fetching message", err));
+
 			if (!message || message.embeds.length === 0) return;
 
 			const oldEmbed = message.embeds[0];
@@ -285,7 +291,7 @@ export class TwitchManager {
 			// Short Stream Check
 			if (streamDurationMs < 120000) {
 				await message.delete().catch(() => null);
-				Logger.info("TWITCH", `Deleted short stream alert for ${notify.twitchChannelName}.`);
+				Logger.info("DISCORD_TWITCH_STREAM_END", `Deleted short stream alert for ${notify.twitchChannelName}.`);
 				return;
 			}
 
@@ -351,7 +357,7 @@ export class TwitchManager {
 				components,
 			});
 		} catch (error) {
-			Logger.error("DISCORD_TWITCH_END", `End failed: ${error}`);
+			Logger.error("DISCORD_TWITCH_STREAM_END", `End failed: ${error}`);
 		}
 	}
 
