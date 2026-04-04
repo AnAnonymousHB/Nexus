@@ -83,7 +83,7 @@ const country: DiscordCommand = {
 function createCountryContainer(country: Country): ContainerBuilder {
 	const { name, population, region, subregion, continents, capital, demonyms, area, cca3, languages, flags, currencies, maps } = country;
 
-	const nativeName = name.nativeName ? Object.values(name.nativeName).map((n: any) => n.official)[0] : name.official;
+	const nativeName = name.nativeName ? Object.values(name.nativeName).map((n: { official: string }) => n.official)[0] : name.official;
 
 	const languagesList = languages ? Object.values(languages).join(", ") : "-";
 
