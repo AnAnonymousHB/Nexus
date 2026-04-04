@@ -16,7 +16,6 @@ const logs: DiscordCommand = {
 	data: new SlashCommandBuilder()
 		.setName("logs")
 		.setDescription("View the latest entries from the system logs.")
-		.setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
 		.addStringOption((option) => option.setName("file").setDescription("Select a log file to view").setAutocomplete(true).setRequired(true))
 		.addBooleanOption((option) => option.setName("full_file").setDescription("Upload the entire log file as an attachment?").setRequired(false))
 		.addIntegerOption((option) =>
