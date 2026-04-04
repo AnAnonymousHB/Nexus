@@ -52,7 +52,16 @@ export class Logger {
 			zippedArchive: true,
 			maxSize: "10m",
 			maxFiles: "7d",
-			format: fileFormat, // Apply clean format
+			format: winston.format.combine(
+				winston.format((info) => {
+					// Check if message exists and is a string before calling .includes()
+					if (typeof info.message === "string" && info.message.includes("[TWITCH]")) {
+						return info;
+					}
+					return false;
+				})(),
+				fileFormat,
+			),
 		});
 
 		this._winston = winston.createLogger({
@@ -65,8 +74,8 @@ export class Logger {
 			],
 		});
 
-		this._winston.add(twitchRotateTransport);
 		if (isProd) {
+			this._winston.add(twitchRotateTransport);
 			this._winston.add(errorRotateTransport);
 			this._winston.add(combinedRotateTransport);
 		}
