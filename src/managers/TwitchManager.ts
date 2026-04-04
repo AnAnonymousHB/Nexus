@@ -8,7 +8,6 @@ import {
 	escapeMarkdown,
 	PermissionFlagsBits,
 	roleMention,
-	TextChannel,
 } from "discord.js";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -227,7 +226,7 @@ export class TwitchManager {
 	private static async handleStreamUpdate(discordClient: DiscordClient, notify: ITwitchNotification, stream: HelixStream) {
 		try {
 			const channel = await discordClient.channels.fetch(notify.discordChannelId).catch(() => null);
-			if (!(channel instanceof TextChannel) || !notify.lastMessageId) return;
+			if (!channel || !channel.isTextBased() || !notify.lastMessageId) return;
 
 			const message = await channel.messages.fetch(notify.lastMessageId).catch(() => null);
 			if (!message || message.embeds.length === 0) return;
@@ -246,10 +245,12 @@ export class TwitchManager {
 					if (gameData) categoryThumbnail = gameData.getBoxArtUrl(600, 800);
 				}
 
+				const startedAtValue = oldEmbed.fields.find((f) => f.name === "Started At")?.value || "Unknown";
+
 				const updatedEmbed = EmbedBuilder.from(oldEmbed)
 					.setTitle(stream.title)
 					.setThumbnail(categoryThumbnail || null)
-					.setFields({ name: "Game", value: stream.gameName || "None" }, { name: "Started At", value: oldEmbed.fields[1].value })
+					.setFields({ name: "Game", value: stream.gameName || "None" }, { name: "Started At", value: startedAtValue })
 					.setImage(`${stream.getThumbnailUrl(1280, 720)}?t=${Date.now()}`)
 					.setFooter({ text: "Last update detected" });
 
@@ -270,7 +271,7 @@ export class TwitchManager {
 				.fetch(notify.discordChannelId)
 				.catch((err) => Logger.error("DISCORD_TWITCH_STREAM_END", "Error fetching channel", err));
 
-			if (!(channel instanceof TextChannel)) return;
+			if (!channel || !channel.isTextBased() || !notify.lastMessageId) return;
 
 			const message = await channel.messages
 				.fetch(notify.lastMessageId)
