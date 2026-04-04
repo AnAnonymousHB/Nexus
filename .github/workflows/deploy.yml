@@ -2,37 +2,17 @@ name: Deploy Nexus
 
 on:
     push:
-        branches: [main] # Triggers when you push to the main branch
+        branches: [main]
 
 jobs:
-    install-packages:
-        runs-on: ubuntu-latest
-        permissions:
-            contents: read
-        steps:
-            - name: Install Node.js
-              uses: actions/setup-node@v3
-              with:
-                  node-version: "24"
-
-            - name: Install PM2
-              run: npm install -g pm2
-
-            - name: Install Git
-              run: sudo apt-get install git -y
-
-            - name: Install npm
-              run: sudo apt-get install npm -y
-
     deploy:
         runs-on: ubuntu-latest
-        needs: install-packages
         permissions:
             contents: read
 
         steps:
             - name: Checkout Code
-              uses: actions/checkout@v4
+              uses: actions/checkout@v5
 
             - name: Deploy via SSH
               uses: appleboy/ssh-action@v1.0.3
@@ -42,20 +22,52 @@ jobs:
                   key: ${{ secrets.SSH_KEY }}
                   port: ${{ secrets.SSH_PORT }}
                   script: |
-                      # Clone the repository if it doesn't exist
+                      # ── Load nvm so the correct Node version is available ─────────
+                      export NVM_DIR="$HOME/.nvm"
+                      [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+                    
+                      echo "Node: $(node --version)"
+                      echo "npm:  $(npm --version)"
+
+                      # ── Git ────────────────────────────────────────────────────────
+                      if ! command -v git &>/dev/null; then
+                        sudo apt-get install git -y
+                      else
+                        echo "Git already installed ($(git --version))"
+                      fi
+
+                      # ── PM2 ────────────────────────────────────────────────────────
+                      if ! command -v pm2 &>/dev/null; then
+                        npm install -g pm2
+                      else
+                        echo "PM2 already installed ($(pm2 --version))"
+                      fi
+
+                      # ── Clone or pull ──────────────────────────────────────────────
                       if [ ! -d "Nexus" ]; then
                         git clone git@github.com:AnAnonymousHB/Nexus.git
                       fi
 
-                      # Navigate to the bot directory
                       cd Nexus
-
-                      # Pull latest changes
                       git pull origin main
-
-                      # Install dependencies and build
+                    
+                      # ── Build ──────────────────────────────────────────────────────
                       npm install
                       npm run build
 
-                      # Restart the bot with PM2
-                      pm2 restart nexus --update-env
+                      # ── PM2 version sync ───────────────────────────────────────────
+                      LOCAL_PM2=$(pm2 --version 2>/dev/null)
+                      INMEM_PM2=$(pm2 ping 2>/dev/null | grep -oP '(?<=version: )\S+' || echo "unknown")
+                      if [ "$LOCAL_PM2" != "$INMEM_PM2" ]; then
+                        echo "PM2 out of sync (local: $LOCAL_PM2, in-memory: $INMEM_PM2), updating..."
+                        pm2 update
+                      else
+                        echo "PM2 in sync ($LOCAL_PM2)"
+                      fi
+
+                      # ── Start or restart ───────────────────────────────────────────
+                      pm2 describe nexus > /dev/null 2>&1 \
+                        && pm2 restart nexus --update-env \
+                        || pm2 start dist/index.js --name nexus
+
+                      pm2 save
