@@ -33,10 +33,15 @@ const evalModal: DiscordModal = {
 			// Execute the code
 			let result;
 			try {
-				// Wrapped in an async IIFE to allow 'await' in the modal input
-				result = await eval(`(async () => { return ${code} })()`);
+				/**
+				 * Scope Shadowing: We pass 'undefined' for process, global, and require
+				 * to prevent accidental leaks or file system access via the eval string.
+				 */
+				const wrapper = `(async (process, global, require) => { return ${code} })`;
+				result = await eval(wrapper)(undefined, undefined, undefined);
 			} catch {
-				result = await eval(`(async () => { ${code} })()`);
+				const wrapper = `(async (process, global, require) => { ${code} })`;
+				result = await eval(wrapper)(undefined, undefined, undefined);
 			}
 
 			const elapsed = Date.now() - start;
@@ -59,6 +64,9 @@ const evalModal: DiscordModal = {
 				displayOutput = String(result);
 				lang = typeof result === "string" ? "txt" : "js";
 			}
+
+			// Scrub the output before it is ever sent to Discord
+			displayOutput = scrub(displayOutput);
 
 			const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
 				new ButtonBuilder({
@@ -90,12 +98,40 @@ const evalModal: DiscordModal = {
 			// Send Result
 			await interaction.editReply(responseOptions);
 		} catch (err) {
-			const errorMsg = err instanceof Error ? err.stack || err.message : String(err);
+			// Scrub the error stack trace as well, just in case
+			const errorMsg = scrub(err instanceof Error ? err.stack || err.message : String(err));
+
 			await interaction.editReply({
 				content: `**❌ Error:**\n\`\`\`js\n${errorMsg.slice(0, 1900)}\n\`\`\``,
 			});
 		}
 	},
 };
+
+/**
+ * Automatically redacts any sensitive values found in process.env
+ * from the provided text string.
+ */
+function scrub(text: string): string {
+	if (typeof text !== "string") return text;
+
+	let sanitized = text;
+	const envEntries = Object.entries(process.env);
+
+	for (const [key, value] of envEntries) {
+		// Skip non-sensitive keys to avoid "collateral redaction"
+		const ignoredKeys = ["NODE_ENV", "MODE", "PORT", "TZ"];
+		if (ignoredKeys.includes(key)) continue;
+
+		// Only redact strings longer than 4 characters (e.g. tokens, URIs, secrets)
+		if (value && typeof value === "string" && value.length > 4) {
+			const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+			const regex = new RegExp(escaped, "g");
+			sanitized = sanitized.replace(regex, "[REDACTED]");
+		}
+	}
+
+	return sanitized;
+}
 
 export default evalModal;
