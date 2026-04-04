@@ -7,6 +7,7 @@ import {
 	MediaGalleryBuilder,
 	MessageFlags,
 	SectionBuilder,
+	SeparatorBuilder,
 	SeparatorSpacingSize,
 	SlashCommandBuilder,
 	TimestampStyles,
@@ -32,7 +33,7 @@ interface Country {
 	area: number;
 	cca3: string;
 	languages?: Record<string, string>;
-	flags: { png: string; svg: string };
+	flags: { png: string; svg: string; alt?: string };
 	currencies?: Record<string, { name: string; symbol: string }>;
 	maps?: { googleMaps?: string };
 }
@@ -79,12 +80,6 @@ const country: DiscordCommand = {
 	},
 };
 
-// Truncate to Discord's 80 char button label limit
-const btn = (label: string) => (label.length > 80 ? label.slice(0, 77) + "..." : label);
-
-// Disabled button helper
-const disabledBtn = (id: string, label: string) => (button: any) => button.setLabel(btn(label)).setCustomId(id).setStyle(ButtonStyle.Secondary).setDisabled(true);
-
 function createCountryContainer(country: Country): ContainerBuilder {
 	const { name, population, region, subregion, continents, capital, demonyms, area, cca3, languages, flags, currencies, maps } = country;
 
@@ -100,7 +95,7 @@ function createCountryContainer(country: Country): ContainerBuilder {
 	const formattedDemonyms = demonyms?.eng
 		? Object.entries(demonyms.eng)
 				.map(([type, val]) => `${type.toUpperCase()}: ${val}`)
-				.join("\n")
+				.join(" / ")
 		: "-";
 
 	const mapsUrl = maps?.googleMaps ?? `https://www.google.com/maps/search/${encodeURIComponent(name.official)}`;
@@ -114,34 +109,7 @@ function createCountryContainer(country: Country): ContainerBuilder {
 		.setButtonAccessory((button) => button.setLabel("View on Google Maps").setURL(mapsUrl).setStyle(ButtonStyle.Link));
 
 	// ── Flag ─────────────────────────────────────────────────────────────────
-	const flagGallery = new MediaGalleryBuilder().addItems((item) => item.setURL(flags.png));
-
-	// ── Geography & People ───────────────────────────────────────────────────
-	const capitalSection = new SectionBuilder()
-		.addTextDisplayComponents((text) => text.setContent("**Capital**"))
-		.setButtonAccessory((button) =>
-			button
-				.setLabel(btn(capital?.join(", ") || "-"))
-				.setURL(capital ? `https://www.google.com/maps/search/${encodeURIComponent(capital[0])}` : mapsUrl)
-				.setStyle(ButtonStyle.Link),
-		);
-
-	const regionSection = new SectionBuilder().addTextDisplayComponents((text) => text.setContent("**Region**")).setButtonAccessory(disabledBtn("region_val", subregion || region));
-
-	const areaSection = new SectionBuilder().addTextDisplayComponents((text) => text.setContent("**Area**")).setButtonAccessory(disabledBtn("area_val", areaString));
-
-	const populationSection = new SectionBuilder().addTextDisplayComponents((text) => text.setContent("**Population**")).setButtonAccessory(disabledBtn("population_val", population.toLocaleString()));
-
-	const demonymSection = new SectionBuilder().addTextDisplayComponents((text) => text.setContent("**Demonym**")).setButtonAccessory(disabledBtn("demonym_val", formattedDemonyms));
-
-	// ── Language & Economy ───────────────────────────────────────────────────
-	const nativeNameSection = new SectionBuilder().addTextDisplayComponents((text) => text.setContent("**Native Name**")).setButtonAccessory(disabledBtn("nativename_val", String(nativeName)));
-
-	const languagesSection = new SectionBuilder()
-		.addTextDisplayComponents((text) => text.setContent(`**Language${languagesList.split(",").length > 1 ? `s` : ""}**`))
-		.setButtonAccessory(disabledBtn("languages_val", languagesList));
-
-	const currencySection = new SectionBuilder().addTextDisplayComponents((text) => text.setContent("**Currency**")).setButtonAccessory(disabledBtn("currency_val", currencyString));
+	const flagGallery = new MediaGalleryBuilder().addItems((item) => item.setURL(flags.png).setDescription(flags.alt ?? `Flag of ${name.official}`));
 
 	return (
 		new ContainerBuilder()
@@ -154,17 +122,21 @@ function createCountryContainer(country: Country): ContainerBuilder {
 			.addSeparatorComponents((sep) => sep.setDivider(true).setSpacing(SeparatorSpacingSize.Small))
 			// Geography & People
 			.addTextDisplayComponents((text) => text.setContent("### 📍 Geography & People"))
-			.addSectionComponents(capitalSection)
-			.addSectionComponents(regionSection)
-			.addSectionComponents(areaSection)
-			.addSectionComponents(populationSection)
-			.addSectionComponents(demonymSection)
+			.addTextDisplayComponents((text) =>
+				text.setContent(
+					`**Capital:** ${capital?.join(", ") || "-"}\n` +
+						`**Region:** ${subregion || region}\n` +
+						`**Area:** ${areaString}\n` +
+						`**Population:** ${population.toLocaleString()}\n` +
+						`**Demonym:** ${formattedDemonyms}`,
+				),
+			)
 			.addSeparatorComponents((sep) => sep.setDivider(true).setSpacing(SeparatorSpacingSize.Small))
 			// Language & Economy
 			.addTextDisplayComponents((text) => text.setContent("### 🌐 Language & Economy"))
-			.addSectionComponents(nativeNameSection)
-			.addSectionComponents(languagesSection)
-			.addSectionComponents(currencySection)
+			.addTextDisplayComponents((text) =>
+				text.setContent(`**Native Name:** ${String(nativeName)}\n` + `**Language${languagesList.split(",").length > 1 ? "s" : ""}:** ${languagesList}\n` + `**Currency:** ${currencyString}`),
+			)
 			.addSeparatorComponents((sep) => sep.setDivider(true).setSpacing(SeparatorSpacingSize.Small))
 			// Footer
 			.addTextDisplayComponents((text) => text.setContent(`-# Country data provided by restcountries.com · ${time(new Date(), TimestampStyles.ShortDateTime)}`))
