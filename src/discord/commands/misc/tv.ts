@@ -4,9 +4,14 @@ import {
 	ButtonBuilder,
 	ButtonStyle,
 	ChatInputCommandInteraction,
+	ContainerBuilder,
 	ContextMenuCommandInteraction,
-	EmbedBuilder,
+	MessageFlags,
+	SectionBuilder,
+	SeparatorSpacingSize,
 	SlashCommandBuilder,
+	TimestampStyles,
+	time,
 } from "discord.js";
 import { CreditsResponse, MovieDb, ShowResponse as BaseShowResponse, VideosResponse } from "moviedb-promise";
 
@@ -25,18 +30,16 @@ const tv: DiscordCommand = {
 		.setName("tv")
 		.setDescription("Get detailed information about a TV show.")
 		.addStringOption((option) => option.setName("show").setDescription("The name of the TV show").setRequired(true).setAutocomplete(true)),
+
 	async autocomplete(interaction: AutocompleteInteraction) {
 		const focusedValue = interaction.options.getFocused();
 		if (!focusedValue.trim()) return interaction.respond([]);
 
 		try {
-			// Search for TV shows matching the input
 			const search = await movieDb.searchTv({ query: focusedValue });
 
-			// Map results to Discord choices (Limit 25)
 			const choices =
 				search.results?.slice(0, 25).map((show) => ({
-					// Show name + year to help differentiate remakes/similar titles
 					name: `${show.name} (${show.first_air_date?.split("-")[0] || "N/A"}) [${show.origin_country?.[0] || "??"}]`,
 					value: show.id?.toString() || "",
 				})) || [];
@@ -53,7 +56,6 @@ const tv: DiscordCommand = {
 		const showId = interaction.options.getString("show")!;
 
 		try {
-			// Fetch full show details including extra info
 			const showData = (await movieDb.tvInfo({
 				id: showId,
 				append_to_response: "videos,credits",
@@ -64,28 +66,8 @@ const tv: DiscordCommand = {
 				return;
 			}
 
-			const embed = createTvEmbed(showData);
-			const row = new ActionRowBuilder<ButtonBuilder>();
-
-			const trailer =
-				showData.videos?.results?.find((v) => v.site === "YouTube" && v.type === "Trailer" && v.official) ||
-				showData.videos?.results?.find((v) => v.site === "YouTube" && v.type === "Trailer");
-
-			row.addComponents(
-				new ButtonBuilder().setLabel("View on TMDB").setStyle(ButtonStyle.Link).setURL(`https://www.themoviedb.org/tv/${showData.id}`),
-			);
-
-			if (trailer) {
-				row.addComponents(
-					new ButtonBuilder()
-						.setLabel("Watch Trailer")
-						.setStyle(ButtonStyle.Link)
-						.setURL(`https://www.youtube.com/watch?v=${trailer.key}`)
-						.setEmoji("🎬"),
-				);
-			}
-
-			await interaction.editReply({ embeds: [embed], components: [row] });
+			const container = createTvContainer(showData);
+			await interaction.editReply({ components: [container], flags: MessageFlags.IsComponentsV2 });
 		} catch (error) {
 			Logger.error("DISCORD_TV", `Error fetching TV show ID: ${showId}`, error);
 			await interaction.editReply("An error occurred while fetching show information.");
@@ -93,7 +75,7 @@ const tv: DiscordCommand = {
 	},
 };
 
-const createTvEmbed = (show: TvWithDetails): EmbedBuilder => {
+function createTvContainer(show: TvWithDetails): ContainerBuilder {
 	const posterBase = "https://image.tmdb.org/t/p/w500";
 	const statusEmoji = show.status === "Ended" || show.status === "Canceled" ? "🟥" : "🟩";
 
@@ -107,7 +89,6 @@ const createTvEmbed = (show: TvWithDetails): EmbedBuilder => {
 		firstAired = `<t:${startUnix}:D> (<t:${startUnix}:R>)`;
 	}
 
-	// Only show a specific end date if the show is no longer airing
 	const isEnded = show.status === "Ended" || show.status === "Canceled";
 	if (isEnded && show.last_air_date) {
 		const endUnix = Math.floor(new Date(show.last_air_date).getTime() / 1000);
@@ -123,34 +104,56 @@ const createTvEmbed = (show: TvWithDetails): EmbedBuilder => {
 	const originCountries = show.origin_country?.length ? show.origin_country.map((code) => regionNames.of(code)).join(", ") : "N/A";
 
 	const networks = show.networks?.length ? show.networks.map((n) => n.name).join(", ") : "N/A";
-
 	const creators = show.created_by?.length ? show.created_by.map((c) => c.name).join(", ") : "N/A";
-	const topCast =
-		show.credits?.cast?.length ?
-			show.credits.cast
+	const topCast = show.credits?.cast?.length
+		? show.credits.cast
 				.slice(0, 5)
 				.map((actor) => actor.name)
 				.join(", ")
-		:	"N/A";
+		: "N/A";
 
-	return new EmbedBuilder()
-		.setColor("#01d277") // TMDB Green
-		.setTitle(show.name || "Unknown Show")
-		.setDescription(show.overview || "No description available.")
-		.setThumbnail(show.poster_path ? `${posterBase}${show.poster_path}` : null)
-		.addFields(
-			{ name: "Created By", value: creators, inline: true },
-			{ name: "Status", value: `${statusEmoji} ${show.status}`, inline: true },
-			{ name: "Rating", value: rating, inline: true },
-			{ name: "Network", value: networks, inline: true },
-			{ name: "Origin", value: `${originCountries} (${originalLanguage})`, inline: true },
-			{ name: "Seasons/Episodes", value: `${show.number_of_seasons}s / ${show.number_of_episodes}eps`, inline: true },
-			{ name: "Years Active", value: yearsActive, inline: false },
-			{ name: "Starring", value: topCast, inline: false },
-			{ name: "Genres", value: genres, inline: false },
+	const tmdbUrl = `https://www.themoviedb.org/tv/${show.id}`;
+	const posterUrl = show.poster_path ? `${posterBase}${show.poster_path}` : null;
+	const trailer = show.videos?.results?.find((v) => v.site === "YouTube" && v.type === "Trailer" && v.official) || show.videos?.results?.find((v) => v.site === "YouTube" && v.type === "Trailer");
+	const trailerUrl = trailer ? `https://www.youtube.com/watch?v=${trailer.key}` : null;
+
+	// ── Header: title + View Poster button ───────────────────────────────────
+	const headerSection = new SectionBuilder()
+		.addTextDisplayComponents(
+			(text) => text.setContent(`# ${show.name || "Unknown Show"}`),
+			(text) => text.setContent(`${rating} · ${statusEmoji} ${show.status || "Unknown"}`),
 		)
-		.setFooter({ text: "Data provided by TheMovieDB" })
-		.setTimestamp();
-};
+		.setButtonAccessory((button) => button.setCustomId(`tv_poster_${show.id}`).setLabel("🖼️ View Poster").setStyle(ButtonStyle.Secondary).setDisabled(!posterUrl));
+
+	// ── Action Row: TMDB + Trailer ────────────────────────────────────────────
+	const actionRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+		new ButtonBuilder().setLabel("🎬 View on TMDB").setURL(tmdbUrl).setStyle(ButtonStyle.Link),
+		...(trailerUrl ? [new ButtonBuilder().setLabel("▶️ Watch Trailer").setURL(trailerUrl).setStyle(ButtonStyle.Link)] : []),
+	);
+
+	return new ContainerBuilder()
+		.setAccentColor(0x01d277)
+		.addSectionComponents(headerSection)
+		.addSeparatorComponents((sep) => sep.setDivider(true).setSpacing(SeparatorSpacingSize.Small))
+		.addTextDisplayComponents((text) => text.setContent("### 📋 Overview"))
+		.addTextDisplayComponents((text) => text.setContent(show.overview || "No description available."))
+		.addSeparatorComponents((sep) => sep.setDivider(true).setSpacing(SeparatorSpacingSize.Small))
+		.addTextDisplayComponents((text) => text.setContent("### 📺 Details"))
+		.addTextDisplayComponents((text) =>
+			text.setContent(
+				`**Created By:** ${creators}\n` +
+					`**Starring:** ${topCast}\n` +
+					`**Genres:** ${genres}\n` +
+					`**Network:** ${networks}\n` +
+					`**Origin:** ${originCountries} (${originalLanguage})\n` +
+					`**Seasons/Episodes:** ${show.number_of_seasons}s / ${show.number_of_episodes}eps\n` +
+					`**Years Active:** ${yearsActive}`,
+			),
+		)
+		.addSeparatorComponents((sep) => sep.setDivider(true).setSpacing(SeparatorSpacingSize.Small))
+		.addActionRowComponents(actionRow)
+		.addSeparatorComponents((sep) => sep.setDivider(false).setSpacing(SeparatorSpacingSize.Small))
+		.addTextDisplayComponents((text) => text.setContent(`-# Data provided by TheMovieDB · ${time(new Date(), TimestampStyles.ShortDateTime)}`));
+}
 
 export default tv;
