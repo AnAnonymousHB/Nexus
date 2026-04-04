@@ -57,5 +57,8 @@ jobs:
                       npm install
                       npm run build
 
-                      # Restart the bot with PM2
-                      pm2 restart nexus --update-env
+                      pm2 describe nexus > /dev/null 2>&1 \
+                        && pm2 restart nexus --update-env \
+                        || pm2 start dist/index.js --name nexus
+
+                      pm2 save
