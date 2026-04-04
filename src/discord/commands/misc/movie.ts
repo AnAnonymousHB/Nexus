@@ -1,12 +1,18 @@
 import {
-	ActionRowBuilder,
 	AutocompleteInteraction,
-	ButtonBuilder,
 	ButtonStyle,
 	ChatInputCommandInteraction,
+	ContainerBuilder,
 	ContextMenuCommandInteraction,
-	EmbedBuilder,
+	MediaGalleryBuilder,
+	MessageFlags,
+	SectionBuilder,
+	SeparatorSpacingSize,
 	SlashCommandBuilder,
+	TimestampStyles,
+	ActionRowBuilder,
+	ButtonBuilder,
+	time,
 } from "discord.js";
 import { CreditsResponse, MovieDb, MovieResponse as BaseMovieResponse, VideosResponse } from "moviedb-promise";
 
@@ -38,9 +44,7 @@ const movie: DiscordCommand = {
 				search.results?.slice(0, 25).map((m) => {
 					const year = m.release_date?.split("-")[0] || "N/A";
 					const lang = m.original_language ? langNames.of(m.original_language) : "??";
-
 					return {
-						// Label: "Movie Name (Year) [Language]"
 						name: `${m.title} (${year}) [${lang}]`,
 						value: m.id?.toString() || "",
 					};
@@ -69,27 +73,8 @@ const movie: DiscordCommand = {
 				return;
 			}
 
-			const embed = createMovieEmbed(movieData);
-			const row = new ActionRowBuilder<ButtonBuilder>();
-
-			const trailer = movieData.videos?.results?.find((v) => v.site === "YouTube" && v.type === "Trailer" && v.official);
-
-			row.addComponents(
-				new ButtonBuilder().setLabel("View on TMDB").setStyle(ButtonStyle.Link).setURL(`https://www.themoviedb.org/movie/${movieData.id}`),
-			);
-
-			// Add the Trailer Button if found
-			if (trailer) {
-				row.addComponents(
-					new ButtonBuilder()
-						.setLabel("Watch Trailer")
-						.setStyle(ButtonStyle.Link)
-						.setURL(`https://www.youtube.com/watch?v=${trailer.key}`)
-						.setEmoji("🎬"),
-				);
-			}
-
-			await interaction.editReply({ embeds: [embed], components: [row] });
+			const container = createMovieContainer(movieData);
+			await interaction.editReply({ components: [container], flags: MessageFlags.IsComponentsV2 });
 		} catch (error) {
 			Logger.error("DISCORD_MOVIE", `Error fetching Movie ID: ${movieId}`, error);
 			await interaction.editReply("An error occurred while fetching movie information.");
@@ -97,13 +82,9 @@ const movie: DiscordCommand = {
 	},
 };
 
-/**
- * Helper to build the Movie embed
- */
-const createMovieEmbed = (movie: MovieWithDetails): EmbedBuilder => {
+function createMovieContainer(movie: MovieWithDetails): ContainerBuilder {
 	const posterBase = "https://image.tmdb.org/t/p/w500";
 
-	// Logic for Runtime (e.g., 135 mins -> 2h 15m)
 	const hours = Math.floor((movie.runtime || 0) / 60);
 	const minutes = (movie.runtime || 0) % 60;
 	const runtimeFormatted = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
@@ -111,13 +92,15 @@ const createMovieEmbed = (movie: MovieWithDetails): EmbedBuilder => {
 	const langNames = new Intl.DisplayNames(["en"], { type: "language" });
 	const originalLanguage = movie.original_language ? langNames.of(movie.original_language) : "N/A";
 
-	const producedBy =
-		movie.production_companies?.length ?
-			movie.production_companies
+	const regionNames = new Intl.DisplayNames(["en"], { type: "region" });
+	const originCountries = movie.production_countries?.length ? movie.production_countries.map((c) => regionNames.of(c.iso_3166_1!)).join(", ") : "N/A";
+
+	const producedBy = movie.production_companies?.length
+		? movie.production_companies
 				.map((c) => c.name)
 				.slice(0, 5)
 				.join(", ")
-		:	"N/A";
+		: "N/A";
 
 	let releaseTimestamp = "N/A";
 	if (movie.release_date) {
@@ -125,45 +108,62 @@ const createMovieEmbed = (movie: MovieWithDetails): EmbedBuilder => {
 		releaseTimestamp = `<t:${unixSeconds}:D> (<t:${unixSeconds}:R>)`;
 	}
 
-	const regionNames = new Intl.DisplayNames(["en"], { type: "region" });
-	const originCountries =
-		movie.production_countries?.length ? movie.production_countries.map((c) => regionNames.of(c.iso_3166_1!)).join(", ") : "N/A";
-
 	const rating = movie.vote_average ? `⭐ ${movie.vote_average.toFixed(1)}/10` : "No rating";
 	const budget = movie.budget ? `$${movie.budget.toLocaleString()}` : "N/A";
 	const revenue = movie.revenue ? `$${movie.revenue.toLocaleString()}` : "N/A";
 	const genres = movie.genres?.map((g) => g.name).join(", ") || "N/A";
-
-	const director = movie.credits?.crew?.find((person) => person.job === "Director")?.name || "N/A";
-	// Extract Top 5 Actors
-	const topCast =
-		movie.credits?.cast?.length ?
-			movie.credits.cast
+	const director = movie.credits?.crew?.find((p) => p.job === "Director")?.name || "N/A";
+	const topCast = movie.credits?.cast?.length
+		? movie.credits.cast
 				.slice(0, 5)
-				.map((actor) => actor.name)
+				.map((a) => a.name)
 				.join(", ")
-		:	"N/A";
+		: "N/A";
 
-	return new EmbedBuilder()
-		.setColor("#01d277")
-		.setTitle(movie.title || "Unknown Movie")
-		.setDescription(movie.overview || "No description available.")
-		.setThumbnail(movie.poster_path ? `${posterBase}${movie.poster_path}` : null)
-		.addFields(
-			{ name: "Director", value: director, inline: true },
-			{ name: "Status", value: movie.status || "Unknown", inline: true },
-			{ name: "Rating", value: rating, inline: true },
-			{ name: "Runtime", value: runtimeFormatted, inline: true },
-			{ name: "Budget", value: budget, inline: true },
-			{ name: "Revenue", value: revenue, inline: true },
-			{ name: "Released", value: releaseTimestamp, inline: true },
-			{ name: "Origin", value: `${originCountries} (${originalLanguage})`, inline: false },
-			{ name: "Starring", value: topCast, inline: false },
-			{ name: "Genres", value: genres, inline: false },
-			{ name: "Produced By", value: producedBy, inline: false },
+	const tmdbUrl = `https://www.themoviedb.org/movie/${movie.id}`;
+	const posterUrl = movie.poster_path ? `${posterBase}${movie.poster_path}` : null;
+	const trailer = movie.videos?.results?.find((v) => v.site === "YouTube" && v.type === "Trailer" && v.official);
+	const trailerUrl = trailer ? `https://www.youtube.com/watch?v=${trailer.key}` : `https://www.youtube.com/results?search_query=${encodeURIComponent(movie.title + " trailer")}`;
+
+	// ── Header: title + View Poster button ───────────────────────────────────
+	// Encode poster URL into the customId so the button handler can use it
+	const headerSection = new SectionBuilder()
+		.addTextDisplayComponents(
+			(text) => text.setContent(`# ${movie.title || "Unknown Movie"}`),
+			(text) => text.setContent(`${rating} · ${runtimeFormatted} · ${movie.status || "Unknown"}`),
 		)
-		.setFooter({ text: "Data provided by TheMovieDB" })
-		.setTimestamp();
-};
+		.setButtonAccessory((button) => button.setCustomId(`movie_poster_${movie.id}`).setLabel("🖼️ View Poster").setStyle(ButtonStyle.Secondary).setDisabled(!posterUrl));
+
+	// ── Action Row: TMDB + Trailer ────────────────────────────────────────────
+	const actionRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+		new ButtonBuilder().setLabel("🎬 View on TMDB").setURL(tmdbUrl).setStyle(ButtonStyle.Link),
+		...(trailerUrl ? [new ButtonBuilder().setLabel("▶️ Watch Trailer").setURL(trailerUrl).setStyle(ButtonStyle.Link)] : []),
+	);
+
+	return new ContainerBuilder()
+		.setAccentColor(0x01d277)
+		.addSectionComponents(headerSection)
+		.addSeparatorComponents((sep) => sep.setDivider(true).setSpacing(SeparatorSpacingSize.Small))
+		.addTextDisplayComponents((text) => text.setContent("### 📋 Overview"))
+		.addTextDisplayComponents((text) => text.setContent(movie.overview || "No description available."))
+		.addSeparatorComponents((sep) => sep.setDivider(true).setSpacing(SeparatorSpacingSize.Small))
+		.addTextDisplayComponents((text) => text.setContent("### 🎬 Details"))
+		.addTextDisplayComponents((text) =>
+			text.setContent(
+				`**Director:** ${director}\n` +
+					`**Starring:** ${topCast}\n` +
+					`**Genres:** ${genres}\n` +
+					`**Released:** ${releaseTimestamp}\n` +
+					`**Origin:** ${originCountries} (${originalLanguage})`,
+			),
+		)
+		.addSeparatorComponents((sep) => sep.setDivider(true).setSpacing(SeparatorSpacingSize.Small))
+		.addTextDisplayComponents((text) => text.setContent("### 💰 Financials"))
+		.addTextDisplayComponents((text) => text.setContent(`**Budget:** ${budget}\n` + `**Revenue:** ${revenue}\n` + `**Produced By:** ${producedBy}`))
+		.addSeparatorComponents((sep) => sep.setDivider(true).setSpacing(SeparatorSpacingSize.Small))
+		.addActionRowComponents(actionRow)
+		.addSeparatorComponents((sep) => sep.setDivider(false).setSpacing(SeparatorSpacingSize.Small))
+		.addTextDisplayComponents((text) => text.setContent(`-# Data provided by TheMovieDB · ${time(new Date(), TimestampStyles.ShortDateTime)}`));
+}
 
 export default movie;
