@@ -7,6 +7,6 @@ export default (client: Client) => {
 		await DiscordGuildManager.getSettings(guild.id);
 
 		const guildOwner = await guild.fetchOwner();
-		Logger.info("DISCORD_GUILD_CREATE", `Joined server ${guild.name} (${guild.id}). Owner: ${guildOwner.displayName} (${guild.ownerId})`);
+		Logger.info("DISCORD_GUILD_CREATE", `Joined server ${guild.name} (${guild.id}). Owner: ${guildOwner.user.globalName} (${guild.ownerId})`);
 	});
 };
